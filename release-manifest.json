@@ -1,14 +1,14 @@
 {
-  "created_at": "20260928T160447Z",
+  "created_at": "20260928T161447Z",
   "upstream_url": "https://github.com/DayuanJiang/next-ai-draw-io",
   "upstream_commit": "027cd88c9088ad5b2d6deff4641dc47ded06afd2",
   "variant": "scoped-edit",
   "files": {
     ".env.example": "52191f1f88aa69cdfe00a3dc0310b2475f1973d5f47d4da46f069875ab5d9993",
     ".gitignore": "b5fd6ffbb222bb564f5ed6885b1c73d4c37f2643b7737309354c3958f478edda",
-    "deploy-report.md": "3b244b33a86e1e881063f17399ff758c8a3b3c53d13a83a1d1d9e1348106852b",
-    "DEPLOY.md": "63b8efe77fba6affff43386b1463afe2845e11f7af81e880111766bc490879d0",
-    "deploy.sh": "4011e816c0082075b09a91cb40d22d15814033fe335c3a5aa1dd6f65e156d8eb",
+    "deploy-report.md": "91b7a4c0ee4868d211e19df406706cf217e1cbf3973f491ce4f561076e36d1f9",
+    "DEPLOY.md": "3e14b864b0a5e482cf1cc1a19bd5a9432979bcdfdffb471770611542803695d1",
+    "deploy.sh": "23ace56f31f87269cfe8f09218a20e95d4448130ac0d7f84e3fe03ccb7456577",
     "docker-compose.yml": "e61f253e822e277b4e3f0139feeae08fcecd9194fb024d3018ccec74be98eaef",
     "docs/ARCHITECTURE.md": "425584369f2dd398d5a4ce4186792d3c1f685028f04154405eaf048f7825b4ba",
     "docs/USAGE.md": "f20c9bbc8553d6fa15601aac152c38cf01580415bbda0b26602574a77d90ca6c",
@@ -16,13 +16,13 @@
     "drawio-custom/plugins/ai-scope.js": "5f1278288efeaa70a96369d5e07de80f9be966ccbdb4e5bffac448d017fd7279",
     "drawio-custom/PreConfig.image-orig.js": "b8655ef28c207ec5e8d3ac207a26d5311499e0be8b97ee08aae9154d69199a07",
     "drawio-custom/PreConfig.js": "f772e826cfb94be6e93076a398b9c28e9fcccddfa99732c9bb0d6599cee121c2",
-    "README.md": "8ce2399e153dc68382a65db4f06766e62255d034f5d27b8258109c3825bffdc3",
-    "setup.sh": "0c03db2609ff4c4b4bddafdc462c669d3749887e9ee742752a307d4ad0c2084e",
-    "tests/test_setup.py": "39d2cc33a02fec66da15d65faceb06f4be1de75f37bbbbf65810886f81d04733",
+    "README.md": "d2a06beb785d59e9c97469378967c7ca3c6ae0a53fa4349a180759dc4657f93f",
+    "setup.sh": "540d6b9698efe6c05ecb9d435a06a684bcb3049d689e23103d9a716f488f244b",
+    "tests/test_setup.py": "d9b4451c8aee56fddf963dc243be93e492e4e7882f6c079a75f8b10b39813f54",
     "tools/deploy_check.py": "86e571b15d690fb07b4ac79c2761471513a5be269f81c50972717693b90059de",
     "tools/gen_drawio_custom.py": "5c84ed8803c279ccaa06237c31c00dcc4b9ba82f4c6a2280f0fa8c924f9cb30e",
     "tools/gen-override.py": "6e562c010a0baa6f97dd2d17108b9b67ad4d58a59705855f9d93f6ef07e6b11a",
-    "tools/package_release.py": "65ea257b3a9e0b9ef62e6a67f765ab9c408fa058a34fc2727b41145f3f2a1d76",
+    "tools/package_release.py": "87ae6c85e615cb2484f31206138ae1b9959da8dfa13be8652f3a871eeca2f95c",
     "tools/setup_config.py": "d195c4190c91270b119c7b42dceb0e9404f4fc10b8fd9930df9659df145618d7",
     "upstream/.dockerignore": "c30506ea34fc9751baeb079e57b71c338a30098a588adf2cebd15fb54087a8b8",
     "upstream/.eslintrc.json": "c411725dd2b648c8d416cda05ea63dc6a6938d0380f4cb24fc7e96d3805987f7",
@@ -337,6 +337,7 @@
     "upstream/tsconfig.json": "1b088c380e4eedba00fe3f29331d9cf75f7599e68fc6aba105d72329e3353e5d",
     "upstream/vercel.json": "0e6d49fa34716de9652da95dc5fad8d7d6958d5e6d3d7a4f2df2f0b5e9dc7f84",
     "upstream/vitest.config.mts": "4d70af644b6efa34cb335caa82468cc751b9d2ee76ca29748c922eaa1ec22cef",
-    "upstream/wrangler.jsonc": "2ddd5c50f517d60f83508f1211e1e2e5ab831758cd3b2b590f47c14c5fdefeed"
+    "upstream/wrangler.jsonc": "2ddd5c50f517d60f83508f1211e1e2e5ab831758cd3b2b590f47c14c5fdefeed",
+    "install-env.sh": "4ffee25232a8a3e91143f6e061c142c5adfc341212d981cc2b8517e2712572e5"
   }
 }

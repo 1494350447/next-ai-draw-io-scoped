@@ -43,27 +43,7 @@ HELP
 }
 
 prerequisites() {
-  local command
-  [[ "$(uname -s)" == "Linux" ]] || die "当前脚本支持 Linux；Windows 请在 WSL2 中运行"
-  for command in docker python3 curl ss sha256sum; do
-    command -v "$command" >/dev/null 2>&1 || die "缺少 $command（见 DEPLOY.md）"
-  done
-  docker compose version >/dev/null 2>&1 || die "需要 Docker Compose >= 2.24.4"
-  docker info >/dev/null 2>&1 || die "Docker 未运行或当前用户无访问权限"
-  python3 - "$(docker compose version --short)" "$(docker version --format '{{.Server.Version}}')" <<'PY'
-import re
-import sys
-
-if sys.version_info < (3, 9):
-    sys.exit("错误: 需要 Python >= 3.9")
-for name, version, minimum in (
-    ("Compose", sys.argv[1], (2, 24, 4)),
-    ("Docker Engine", sys.argv[2], (24, 0, 0)),
-):
-    match = re.match(r"v?(\d+)\.(\d+)\.(\d+)", version)
-    if not match or tuple(map(int, match.groups())) < minimum:
-        sys.exit(f"错误: {name} 版本过低或无法识别: {version}，最低 {'.'.join(map(str, minimum))}")
-PY
+  bash "${ROOT_DIR}/install-env.sh" --check
   [[ "$WAIT_TIMEOUT" =~ ^[1-9][0-9]*$ ]] || die "WAIT_TIMEOUT 必须为正整数秒数"
   [[ -z "${DEPLOY_REPO_DIR:-}" || "$DEPLOY_REPO_DIR" == "$REPO_DIR" ]] \
     || die "请将随包定制源码放在 upstream/；当前覆盖层不支持外部 DEPLOY_REPO_DIR"

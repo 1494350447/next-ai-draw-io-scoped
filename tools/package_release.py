@@ -21,7 +21,7 @@ CUSTOM_SOURCE = [
     "tests/unit/scoped-rules.test.ts",
 ]
 DEPLOY_FILES = [
-    "README.md", "DEPLOY.md", "deploy-report.md", "deploy.sh", "setup.sh",
+    "README.md", "DEPLOY.md", "deploy-report.md", "deploy.sh", "setup.sh", "install-env.sh",
     "docker-compose.yml", ".env.example", ".gitignore",
     "docs/ARCHITECTURE.md", "docs/USAGE.md",
     "tools/gen-override.py", "tools/gen_drawio_custom.py",

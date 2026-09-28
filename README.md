@@ -12,13 +12,16 @@
 下载本仓库完整源码或克隆后，在仓库根目录运行以下命令；无需另行克隆上游。
 
 ```bash
+./install-env.sh
 ./setup.sh
 ```
 
-自动检查环境、首次引导填写 DeepSeek 模型与 API key，然后构建、启动并验证服务。
+两步分别执行：`install-env.sh` 安装系统依赖并检查环境，`setup.sh` 配置并安装项目。
+环境安装仅支持 Ubuntu 24.04，需要 root 或 sudo；已有环境可用 `./install-env.sh --check` 只检查。
+环境脚本不读取 .env，不依赖 upstream/，不构建或启动项目。
+项目脚本先检查环境，首次引导填写 DeepSeek 模型与 API key，然后构建、启动服务。
 已有 `.env` 不会覆盖；无交互终端时先 `./deploy.sh init` 并填写配置。
-Ubuntu 24.04 缺少系统依赖时可用 `./setup.sh --install-deps`（需要 root 或 sudo）。
-只检查用 `./setup.sh --check`；同时验证真实模型调用用 `./setup.sh --with-ai`。
+项目只检查用 `./setup.sh --check`；项目安装不会自动调用环境安装脚本安装系统软件。
 
 默认命令完成环境检查、构建、启动、就绪检查和插件加载校验，不执行局部编辑规则冒烟或模型调用。
 应用：<http://127.0.0.1:3000/>；画布：<http://127.0.0.1:8080/>。
@@ -31,7 +34,8 @@ Ubuntu 24.04 缺少系统依赖时可用 `./setup.sh --install-deps`（需要 ro
 | `upstream/` | 上游源码及已接入的局部编辑 API、模型复用、主窗口代理、单元测试 |
 | `drawio-custom/plugins/ai-scope.js` | 选区、右键菜单、指令浮框、可选编号、画布写回 |
 | `drawio-custom/PreConfig.js` | 自动生成的插件入口、CSP 和缓存指纹 |
-| `setup.sh`、`deploy.sh`、`docker-compose.yml`、`tools/` | 一键环境检查、首次配置、部署、验证、资产生成、打包 |
+| `install-env.sh` | 独立环境安装与检查 |
+| `setup.sh`、`deploy.sh`、`docker-compose.yml`、`tools/` | 项目配置、部署、运维、资产生成、打包 |
 | `docs/USAGE.md` | 操作说明 |
 | `docs/ARCHITECTURE.md` | 当前架构、维护入口和已知边界 |
 | `DEPLOY.md`、`deploy-report.md` | 部署说明和本次实测结果 |

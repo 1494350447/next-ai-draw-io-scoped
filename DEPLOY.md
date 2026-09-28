@@ -13,15 +13,19 @@
 
 宿主机无需 Node.js、npm、PyYAML；Node 依赖在镜像中安装。
 默认不安装系统软件，不改全局 npm 配置，不自动改已有 data/ 的权限。
-`setup.sh --install-deps` 显式启用 Ubuntu 24.04 的缺失依赖安装。
+`install-env.sh` 单独负责 Ubuntu 24.04 的缺失依赖安装，`setup.sh` 仅安装项目。
 
-## 一键环境检查与部署
+## 分开安装环境与项目
 
 ```bash
+./install-env.sh
 ./setup.sh
 ```
 
-顺序为系统工具和版本检查 → Docker 权限及端口检查 → 首次模型配置 →
+第一条命令安装系统工具并检查版本和 Docker 访问权限，到此结束。
+环境脚本可单独复制运行，不需要项目源码或模型 key，不创建 .env、不构建镜像、不启动项目。
+
+第二条命令负责项目：环境和端口预检 → 首次模型配置 →
 构建启动 → HTTP 就绪和插件加载校验 → 输出访问地址。
 默认部署不执行局部编辑规则冒烟，也不调用模型。
 最低版本为 Docker Engine 24、Compose 2.24.4、Python 3.9，脚本会实际比较版本。
@@ -33,10 +37,13 @@
 
 | 命令 | 用途 |
 | --- | --- |
-| `./setup.sh --check` | 只读检查环境和已有配置；配置缺失或版本过低返回非零 |
-| `./setup.sh --install-deps` | Ubuntu 24.04 下通过 apt 安装缺失依赖，然后部署 |
-| `./setup.sh --with-ai` | 部署后额外实际调用聊天和局部编辑模型，消耗额度 |
-| `./setup.sh --install-deps --with-ai` | 补齐依赖、部署并验证模型链路 |
+| `./install-env.sh` | Ubuntu 24.04 下通过 apt 安装缺失依赖，然后仅检查系统环境 |
+| `./install-env.sh --check` | 只读检查环境，不要求 .env 或项目源码，不安装软件 |
+| `./setup.sh` | 配置、构建并启动项目，检查服务可访问性 |
+| `./setup.sh --check` | 只读检查项目环境和已有配置；配置缺失或版本过低返回非零 |
+
+旧的 `setup.sh --install-deps` 和 `--with-ai` 已移除。
+项目部署不运行规则或模型冒烟；维护人员如需单独诊断，仍可手动运行 deploy.sh smoke/verify。
 
 依赖安装使用 Ubuntu 已配置的 APT 源，需要 root 或 sudo；不替换系统源、不自动升级已有软件，
 不卸载现有包。缺失项对应 docker.io、docker-compose-v2、python3、curl、iproute2、coreutils。

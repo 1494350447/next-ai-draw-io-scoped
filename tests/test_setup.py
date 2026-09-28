@@ -17,6 +17,7 @@ class SetupTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.directory = Path(self.temporary.name)
         shutil.copy2(ROOT / "setup.sh", self.directory / "setup.sh")
+        shutil.copy2(ROOT / "install-env.sh", self.directory / "install-env.sh")
         shutil.copy2(ROOT / ".env.example", self.directory / ".env.example")
         self.trace = self.directory / "trace"
         self.environment = dict(os.environ, SETUP_TRACE=str(self.trace))
@@ -36,7 +37,13 @@ class SetupTests(unittest.TestCase):
             cwd="/tmp", env=self.environment, input="", text=True, capture_output=True,
         )
 
-    def test_existing_configuration_is_preserved_and_ai_is_optional(self):
+    def run_environment(self, *arguments):
+        return subprocess.run(
+            ["bash", str(self.directory / "install-env.sh"), *arguments],
+            cwd="/tmp", env=self.environment, input="", text=True, capture_output=True,
+        )
+
+    def test_project_install_preserves_configuration_without_smoke(self):
         self.fake_deploy()
         config = self.directory / ".env"
         config.write_text("existing-private-config")
@@ -44,10 +51,6 @@ class SetupTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(config.read_text(), "existing-private-config")
         self.assertEqual(self.trace.read_text().splitlines(), ["environment", "deploy", "status"])
-        self.trace.unlink()
-        result = self.run_setup("--with-ai")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.trace.read_text().splitlines(), ["environment", "deploy", "smoke", "status"])
 
     def test_check_is_read_only_and_rejects_install_flags(self):
         self.fake_deploy()
@@ -70,10 +73,10 @@ class SetupTests(unittest.TestCase):
     def test_failures_stop_following_stages(self):
         self.fake_deploy()
         (self.directory / ".env").write_text("test-config")
-        for stage in ("environment", "deploy", "smoke"):
+        for stage in ("environment", "deploy", "status"):
             with self.subTest(stage=stage):
                 self.environment["FAIL_STAGE"] = stage
-                result = self.run_setup("--with-ai")
+                result = self.run_setup()
                 self.assertNotEqual(result.returncode, 0)
                 self.assertEqual(self.trace.read_text().splitlines()[-1], stage)
                 self.trace.unlink()
@@ -151,36 +154,50 @@ class SetupTests(unittest.TestCase):
         release = Path("/etc/os-release").read_text()
         if "ID=ubuntu\n" not in release or 'VERSION_ID="24.04"' not in release:
             self.skipTest("Dependency installer targets Ubuntu 24.04")
-        self.fake_deploy()
-        (self.directory / ".env").write_text("test-config")
         binary = self.directory / "bin"
         binary.mkdir()
-        for command in ("dirname", "python3", "curl", "ss", "sha256sum", "bash"):
+        for command in ("dirname", "uname", "python3", "curl", "ss", "sha256sum", "bash"):
             resolved = shutil.which(command)
             if not resolved:
                 self.skipTest(f"Missing test prerequisite: {command}")
             (binary / command).symlink_to(resolved)
-        for command in ("apt-get", "systemctl"):
-            executable = binary / command
-            executable.write_text(
-                '#!/bin/bash\nprintf "%s %s\\n" "${0##*/}" "$*" >> "$SETUP_TRACE"\n'
-                'if [[ "${FAIL_APT:-0}" == 1 ]]; then exit 9; fi\n'
-            )
-            executable.chmod(0o755)
+        docker_source = '#!/bin/bash\nif [[ "$1" == compose ]]; then echo 2.24.4; elif [[ "$1" == version ]]; then echo 24.0.0; fi\n'
+        apt = binary / "apt-get"
+        apt.write_text(
+            f"#!{sys.executable}\nimport os,sys,pathlib\n"
+            "with open(os.environ['SETUP_TRACE'], 'a') as output: output.write('apt-get ' + ' '.join(sys.argv[1:]) + '\\n')\n"
+            "if os.getenv('FAIL_APT') == '1': sys.exit(9)\n"
+            "if sys.argv[1] == 'install':\n"
+            "    target = pathlib.Path(__file__).parent / 'docker'\n"
+            f"    target.write_text({docker_source!r})\n"
+            "    target.chmod(0o755)\n"
+        )
+        apt.chmod(0o755)
+        systemctl = binary / "systemctl"
+        systemctl.write_text('#!/bin/bash\nprintf "systemctl %s\\n" "$*" >> "$SETUP_TRACE"\n')
+        systemctl.chmod(0o755)
         sudo = binary / "sudo"
         sudo.write_text('#!/bin/bash\nexec "$@"\n')
         sudo.chmod(0o755)
         self.environment["PATH"] = str(binary)
-        result = self.run_setup("--install-deps")
+        check = self.run_environment("--check")
+        self.assertNotEqual(check.returncode, 0)
+        self.assertFalse(self.trace.exists())
+        result = self.run_environment()
         self.assertEqual(result.returncode, 0, result.stderr)
         calls = self.trace.read_text().splitlines()
         self.assertIn("apt-get update", calls)
         self.assertIn("apt-get install --no-remove --no-install-recommends -y docker.io docker-compose-v2", calls)
         self.assertIn("systemctl enable --now docker", calls)
-        self.assertEqual(calls[-3:], ["environment", "deploy", "status"])
+        self.assertEqual(len(calls), 3)
+        self.assertFalse((self.directory / ".env").exists())
+        self.assertFalse((self.directory / "deploy.sh").exists())
+        self.assertEqual(self.run_environment("--check").returncode, 0)
+        self.assertEqual(self.trace.read_text().splitlines(), calls)
         self.trace.unlink()
+        (binary / "docker").unlink()
         self.environment["FAIL_APT"] = "1"
-        failed = self.run_setup("--install-deps")
+        failed = self.run_environment()
         self.assertNotEqual(failed.returncode, 0)
         self.assertEqual(self.trace.read_text().splitlines(), ["apt-get update"])
 
