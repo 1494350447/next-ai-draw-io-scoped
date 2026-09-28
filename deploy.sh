@@ -23,7 +23,7 @@ usage() {
   cat <<'HELP'
 Next AI Draw.io + AI 局部修改插件
 用法: ./deploy.sh [命令]
-  deploy              构建、启动、等待就绪、校验插件和局部编辑（默认）
+  deploy              构建、启动、等待就绪、校验插件（默认）
   init                创建 .env 模板，不覆盖已有配置
   doctor              只读体检，不构建、不启动、不创建配置
   environment         仅检查系统工具、版本、Docker 权限、端口与磁盘
@@ -283,7 +283,6 @@ case "${1:-deploy}" in
   deploy)
     do_install
     do_up
-    scoped_smoke
     print_access
     ;;
   install) do_install ;;

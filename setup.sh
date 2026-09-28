@@ -104,7 +104,7 @@ if [[ ! -e "${ROOT_DIR}/.env" ]]; then
     die "已创建 .env 模板；请填写模型配置后重新运行，非交互模式不会等待输入"
   fi
 fi
-info "3/4 构建、启动并校验应用、插件和局部编辑规则"
+info "3/4 构建、启动并检查应用和插件是否就绪"
 bash "${ROOT_DIR}/deploy.sh" deploy
 info "4/4 验证部署结果"
 if (( WITH_AI )); then bash "${ROOT_DIR}/deploy.sh" smoke; fi
