@@ -12,10 +12,13 @@
 下载本仓库完整源码或克隆后，在仓库根目录运行以下命令；无需另行克隆上游。
 
 ```bash
-./deploy.sh init
-# 编辑 .env，填写 DEEPSEEK_API_KEY，确认 AI_MODEL 是服务商支持的模型 ID
-./deploy.sh
+./setup.sh
 ```
+
+自动检查环境、首次引导填写 DeepSeek 模型与 API key，然后构建、启动并验证服务。
+已有 `.env` 不会覆盖；无交互终端时先 `./deploy.sh init` 并填写配置。
+Ubuntu 24.04 缺少系统依赖时可用 `./setup.sh --install-deps`（需要 root 或 sudo）。
+只检查用 `./setup.sh --check`；同时验证真实模型调用用 `./setup.sh --with-ai`。
 
 默认命令完成构建、启动、就绪检查、插件校验和局部编辑规则冒烟。
 应用：<http://127.0.0.1:3000/>；画布：<http://127.0.0.1:8080/>。
@@ -28,7 +31,7 @@
 | `upstream/` | 上游源码及已接入的局部编辑 API、模型复用、主窗口代理、单元测试 |
 | `drawio-custom/plugins/ai-scope.js` | 选区、右键菜单、指令浮框、可选编号、画布写回 |
 | `drawio-custom/PreConfig.js` | 自动生成的插件入口、CSP 和缓存指纹 |
-| `deploy.sh`、`docker-compose.yml`、`tools/` | 部署、验证、资产生成、打包 |
+| `setup.sh`、`deploy.sh`、`docker-compose.yml`、`tools/` | 一键环境检查、首次配置、部署、验证、资产生成、打包 |
 | `docs/USAGE.md` | 操作说明 |
 | `docs/ARCHITECTURE.md` | 当前架构、维护入口和已知边界 |
 | `DEPLOY.md`、`deploy-report.md` | 部署说明和本次实测结果 |

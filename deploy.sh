@@ -26,6 +26,7 @@ Next AI Draw.io + AI 局部修改插件
   deploy              构建、启动、等待就绪、校验插件和局部编辑（默认）
   init                创建 .env 模板，不覆盖已有配置
   doctor              只读体检，不构建、不启动、不创建配置
+  environment         仅检查系统工具、版本、Docker 权限、端口与磁盘
   install             构建应用、准备固定版本 draw.io、检查运行产物
   up                  启动已有镜像，等待两个服务就绪
   down / reset        停止容器和网络，保留 data/
@@ -43,14 +44,44 @@ HELP
 
 prerequisites() {
   local command
+  [[ "$(uname -s)" == "Linux" ]] || die "当前脚本支持 Linux；Windows 请在 WSL2 中运行"
   for command in docker python3 curl ss sha256sum; do
     command -v "$command" >/dev/null 2>&1 || die "缺少 $command（见 DEPLOY.md）"
   done
   docker compose version >/dev/null 2>&1 || die "需要 Docker Compose >= 2.24.4"
   docker info >/dev/null 2>&1 || die "Docker 未运行或当前用户无访问权限"
+  python3 - "$(docker compose version --short)" "$(docker version --format '{{.Server.Version}}')" <<'PY'
+import re
+import sys
+
+if sys.version_info < (3, 9):
+    sys.exit("错误: 需要 Python >= 3.9")
+for name, version, minimum in (
+    ("Compose", sys.argv[1], (2, 24, 4)),
+    ("Docker Engine", sys.argv[2], (24, 0, 0)),
+):
+    match = re.match(r"v?(\d+)\.(\d+)\.(\d+)", version)
+    if not match or tuple(map(int, match.groups())) < minimum:
+        sys.exit(f"错误: {name} 版本过低或无法识别: {version}，最低 {'.'.join(map(str, minimum))}")
+PY
   [[ "$WAIT_TIMEOUT" =~ ^[1-9][0-9]*$ ]] || die "WAIT_TIMEOUT 必须为正整数秒数"
   [[ -z "${DEPLOY_REPO_DIR:-}" || "$DEPLOY_REPO_DIR" == "$REPO_DIR" ]] \
     || die "请将随包定制源码放在 upstream/；当前覆盖层不支持外部 DEPLOY_REPO_DIR"
+}
+
+do_environment() {
+  prerequisites
+  ensure_repo
+  ports_free
+  info "Linux / Python $(python3 --version | cut -d' ' -f2) / Docker $(docker version --format '{{.Server.Version}}') / Compose $(docker compose version --short)"
+  info "宿主端口 3000、8080 无冲突"
+  local available
+  available="$(df -Pk "$ROOT_DIR" | awk 'NR==2 {print $4}')"
+  info "项目所在文件系统剩余空间：$((available / 1024)) MiB"
+  if (( available < 6 * 1024 * 1024 )); then
+    warn "可用空间不足建议的 6 GiB；首次镜像构建可能失败"
+  fi
+  info "环境检查通过；Docker 镜像和模型网络将在实际部署/冒烟时验证"
 }
 
 ensure_repo() {
@@ -248,6 +279,7 @@ case "${1:-deploy}" in
   help|-h|--help) usage ;;
   init) init_env ;;
   doctor) do_doctor ;;
+  environment) do_environment ;;
   deploy)
     do_install
     do_up

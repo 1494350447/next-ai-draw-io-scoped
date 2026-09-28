@@ -21,11 +21,12 @@ CUSTOM_SOURCE = [
     "tests/unit/scoped-rules.test.ts",
 ]
 DEPLOY_FILES = [
-    "README.md", "DEPLOY.md", "deploy-report.md", "deploy.sh",
+    "README.md", "DEPLOY.md", "deploy-report.md", "deploy.sh", "setup.sh",
     "docker-compose.yml", ".env.example", ".gitignore",
     "docs/ARCHITECTURE.md", "docs/USAGE.md",
     "tools/gen-override.py", "tools/gen_drawio_custom.py",
-    "tools/deploy_check.py", "tools/package_release.py",
+    "tools/deploy_check.py", "tools/package_release.py", "tools/setup_config.py",
+    "tests/test_setup.py",
     "drawio-custom/PreConfig.js", "drawio-custom/PreConfig.image-orig.js",
     "drawio-custom/image.lock.json", "drawio-custom/plugins/ai-scope.js",
 ]

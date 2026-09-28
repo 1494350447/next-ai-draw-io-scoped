@@ -6,13 +6,45 @@
 ## 环境要求
 
 - Linux、Bash、Python >= 3.9、curl、ss（iproute2）、sha256sum。
-- Docker 可供当前用户使用；Compose >= 2.24.4，支持 `dockerfile_inline` 和 `!override`。
+- Docker Engine >= 24 且可供当前用户使用；Compose >= 2.24.4，支持 `dockerfile_inline` 和 `!override`。
 - 建议预留至少 6 GB 磁盘空间供镜像与构建缓存使用；实际需求随依赖变化。
 - 端口 3000、8080 可用；构建机器能够访问 Docker Registry、Alpine 软件源和 npm 镜像源。
 - 可用的模型账号；默认模板使用 DeepSeek，模型 ID 以提供方实际支持为准。
 
 宿主机无需 Node.js、npm、PyYAML；Node 依赖在镜像中安装。
-脚本不会安装系统软件，不会改全局 npm 配置，不会自动改已有 data/ 的权限。
+默认不安装系统软件，不改全局 npm 配置，不自动改已有 data/ 的权限。
+`setup.sh --install-deps` 显式启用 Ubuntu 24.04 的缺失依赖安装。
+
+## 一键环境检查与部署
+
+```bash
+./setup.sh
+```
+
+顺序为系统工具和版本检查 → Docker 权限及端口检查 → 首次模型配置 →
+构建启动 → HTTP 就绪、插件哈希、局部编辑规则验证 → 输出访问地址。
+最低版本为 Docker Engine 24、Compose 2.24.4、Python 3.9，脚本会实际比较版本。
+磁盘空间不足建议的 6 GiB 时提醒；网络可用性以实际镜像构建与模型冒烟为准。
+
+首次交互运行会询问 DeepSeek 模型 ID 和 API key（不回显），生成权限 600 的 .env。
+已有配置原样保留。无人值守运行时先用 deploy.sh init 创建并填写 .env；
+若配置缺失，脚本生成空模板并退出，不会挂起等待，也不会用空 key 继续部署。
+
+| 命令 | 用途 |
+| --- | --- |
+| `./setup.sh --check` | 只读检查环境和已有配置；配置缺失或版本过低返回非零 |
+| `./setup.sh --install-deps` | Ubuntu 24.04 下通过 apt 安装缺失依赖，然后部署 |
+| `./setup.sh --with-ai` | 部署后额外实际调用聊天和局部编辑模型，消耗额度 |
+| `./setup.sh --install-deps --with-ai` | 补齐依赖、部署并验证模型链路 |
+
+依赖安装使用 Ubuntu 已配置的 APT 源，需要 root 或 sudo；不替换系统源、不自动升级已有软件，
+不卸载现有包。缺失项对应 docker.io、docker-compose-v2、python3、curl、iproute2、coreutils。
+新安装 Docker 后用 systemctl 启用服务；其它发行版、已有版本过低、现有 Docker 未启动或权限不足，
+按提示由管理员处理。安装 Docker 不会自动把当前用户加入 docker 组，授权后需重新登录再运行。
+国内 npm 源仍沿用 registry.npmmirror.com，系统 APT 源由机器管理员维护。
+
+自动安装分支与现有 Docker 安装共存时，不替换 Docker 引擎；缺 Compose 时仅安装 Compose 包。
+当前实测平台及未覆盖项见 deploy-report.md。
 
 ## 首次部署
 
@@ -46,6 +78,7 @@ cd next-ai-draw-io
 | 命令 | 用途与影响 |
 | --- | --- |
 | `./deploy.sh --help` | 查看命令 |
+| `./deploy.sh environment` | 仅检查系统环境、版本、端口和磁盘，不要求 .env |
 | `./deploy.sh doctor` | 只读检查环境、配置、源码、生成物和端口，不创建配置 |
 | `./deploy.sh install` | 构建应用、准备 draw.io 镜像，验证 standalone 及局部编辑路由 |
 | `./deploy.sh up` | 使用已有镜像启动并等待就绪；不自动重建应用 |
