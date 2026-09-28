@@ -1,0 +1,24 @@
+# S1 spike 用的 headless 浏览器镜像。
+# 宿主机没有浏览器、也缺 libnss3/libnspr4，所以把 chromium 关在容器里；
+# 容器用 --network host，这样容器内的 127.0.0.1:8080 就是宿主机的 drawio。
+# 国内网络：alpine 换清华源、npm 换 npmmirror（默认走国内，可用 build-arg 覆盖）。
+FROM node:24-alpine
+
+ARG ALPINE_MIRROR=https://mirrors.tuna.tsinghua.edu.cn/alpine
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+
+RUN set -eux; \
+    ver="$(cut -d. -f1,2 /etc/alpine-release)"; \
+    printf '%s/v%s/main\n%s/v%s/community\n' "$ALPINE_MIRROR" "$ver" "$ALPINE_MIRROR" "$ver" > /etc/apk/repositories; \
+    apk update; \
+    # font-noto-cjk：插件界面文案是中文，镜像里没有 CJK 字体时截图会变成"豆腐块"
+    # （实测：42 个字体、0 个 CJK，fc-match sans-serif:lang=zh 落到 DejaVu）。
+    # 这是测试镜像的事，跟产品无关 —— 但视觉证据要能看，所以装上。
+    apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-dejavu font-noto-cjk; \
+    npm config set registry "$NPM_REGISTRY"
+
+# 只用 alpine 自带的 chromium，不让 playwright 再下一份 glibc 版
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+ENV CHROME_PATH=/usr/lib/chromium/chromium
+
+WORKDIR /work

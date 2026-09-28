@@ -1,0 +1,15 @@
+# 现场生成，含密钥，绝不入库
+.env
+# 构建与运行产物
+logs/
+data/
+releases/
+__pycache__/
+*.pyc
+node_modules/
+.next/
+.env.*
+!.env.example
+*.log
+spikes/**/results/
+.DS_Store

@@ -1,0 +1,120 @@
+# 上游 compose 的覆盖层。不复制、不改写上游文件，靠 -f 叠加。
+#
+# 叠加顺序有实际影响，必须上游在前、本文件在后：
+#   docker compose -f <workdir>/upstream/docker-compose.yml -f <workdir>/docker-compose.yml up -d
+# compose 合并同名标量时后一份文件胜出，本文件靠这一点才能改掉 build.context；
+# 相对路径统一按 --project-directory（部署工作目录）解析，所以上游的
+# env_file: .env 与 volumes: ./data 也一并落在工作目录里。
+#
+# 本文件由 tools/gen-override.py 生成，不要手改；改生成脚本后重跑一次。
+services:
+  drawio:
+    image: jgraph/drawio@sha256:4bd19d4bc36b65cabf1ae9c5d234597e564416b6c67f7d4db296c2df758fcb52
+    restart: unless-stopped
+    volumes:
+      # drawio 官方留给自托管的定制入口，在应用脚本之前执行（见 tools/gen_drawio_custom.py）。
+      # 只读挂载：容器 entrypoint 每次启动都会重写这个文件，不顶掉它的话重启即失效。
+      - ./drawio-custom/PreConfig.js:/usr/local/tomcat/webapps/draw/js/PreConfig.js:ro
+      # 插件必须挂 plugins/ 的子目录 —— 直挂 plugins/ 会盖掉镜像自带的官方插件。
+      - ./drawio-custom/plugins:/usr/local/tomcat/webapps/draw/plugins/custom:ro
+
+  next-ai-draw-io:
+    restart: unless-stopped
+    build:
+      # 上游是 context: .，这里显式指到 checkout，避免依赖叠加顺序解析相对路径。
+      context: ./upstream
+      dockerfile_inline: |
+        # Multi-stage Dockerfile for Next.js
+
+        # Stage 1: Install dependencies
+        FROM node:24-alpine AS deps
+        RUN apk add --no-cache libc6-compat
+        WORKDIR /app
+
+        # Copy package files
+        COPY package.json package-lock.json* ./
+
+        # Install dependencies
+        ARG ELECTRON_SKIP_BINARY_DOWNLOAD=1
+        # [deploy-override] begin: 国内 npm 镜像源 + 跳过只给测试用的二进制下载
+        # 上游未提供 registry 入口，且 BuildKit 不会把未声明的 build-arg 注入成环境变量，
+        # 所以只能写进 Dockerfile。PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD 只影响仓库自身的 e2e 测试，
+        # 与应用运行无关（next build 不跑测试）。
+        ARG NPM_REGISTRY=https://registry.npmmirror.com
+        ARG PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+        RUN npm config set registry "$$NPM_REGISTRY" && npm config get registry
+        # [deploy-override] end
+        RUN npm install
+
+        # Stage 2: Build application
+        FROM node:24-alpine AS builder
+        WORKDIR /app
+
+        # Copy node_modules from deps stage
+        COPY --from=deps /app/node_modules ./node_modules
+        COPY . .
+
+        # Disable Next.js telemetry during build
+        ENV NEXT_TELEMETRY_DISABLED=1
+
+        # Build-time argument for self-hosted draw.io URL
+        ARG NEXT_PUBLIC_DRAWIO_BASE_URL=https://embed.diagrams.net
+        ENV NEXT_PUBLIC_DRAWIO_BASE_URL=$${NEXT_PUBLIC_DRAWIO_BASE_URL}
+
+        # Build-time argument to show About link and Notice icon
+        ARG NEXT_PUBLIC_SHOW_ABOUT_AND_NOTICE=false
+        ENV NEXT_PUBLIC_SHOW_ABOUT_AND_NOTICE=$${NEXT_PUBLIC_SHOW_ABOUT_AND_NOTICE}
+
+        # Build-time argument for subdirectory deployment (e.g., /nextaidrawio)
+        ARG NEXT_PUBLIC_BASE_PATH=""
+        ENV NEXT_PUBLIC_BASE_PATH=$${NEXT_PUBLIC_BASE_PATH}
+
+        # Control sponsorship and self-hosting messaging in quota notifications.
+        # Set NEXT_PUBLIC_SELFHOSTED="true" in self-hosted deployments to hide sponsorship/self-host links and related text in quota popups.
+        ARG NEXT_PUBLIC_SELFHOSTED=""
+        ENV NEXT_PUBLIC_SELFHOSTED="$${NEXT_PUBLIC_SELFHOSTED}"
+
+        # Build Next.js application (standalone mode)
+        # [deploy-override] begin: use the stable webpack production build
+        RUN npm run build -- --webpack
+        # [deploy-override] end
+
+
+        # Stage 3: Production runtime
+        FROM node:24-alpine AS runner
+        WORKDIR /app
+
+        ENV NODE_ENV=production
+        ENV NEXT_TELEMETRY_DISABLED=1
+
+        # Create non-root user for security
+        RUN addgroup --system --gid 1001 nodejs
+        RUN adduser --system --uid 1001 nextjs
+
+        # Copy necessary files
+        COPY --from=builder /app/public ./public
+
+        # Copy standalone build output
+        COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+        COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+        # Writable dir for admin panel settings (data/settings.json)
+        RUN mkdir -p /app/data && chown nextjs:nodejs /app/data
+
+        USER nextjs
+
+        EXPOSE 3000
+
+        ENV PORT=3000
+        ENV HOSTNAME="0.0.0.0"
+
+        # Start the application (HOSTNAME override needed for AWS App Runner)
+        CMD ["sh", "-c", "HOSTNAME=0.0.0.0 exec node server.js"]
+      # 上游 args 是列表，这里用映射整体覆盖。
+      args: !override
+        NEXT_PUBLIC_DRAWIO_BASE_URL: ${DRAWIO_PUBLIC_URL:-http://localhost:8080}
+        # 自建实例：不显示赞助/自托管引导文案
+        NEXT_PUBLIC_SELFHOSTED: "true"
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
+        ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+        PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"

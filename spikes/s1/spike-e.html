@@ -1,0 +1,27 @@
+<!doctype html>
+<!-- S3 宿主页：只把 drawio 框进 iframe（drawio 只在被框住时才发 init），
+     并把 iframe 的 postMessage 全部记下来供 Playwright 读取。
+     刻意不加 ?plugins=：这次要验的就是"生产形态"——插件由只读挂载的 js/PreConfig.js 自动注入。
+     ?aiScopeDebug=1 是适配层自带的调试开关，这里只用来给"真实点击"定位元素坐标；
+     所有状态读取与动作调用都走 drawio 官方 embed 协议，不碰调试全局变量。 -->
+<meta charset="utf-8" />
+<title>s3 probe host</title>
+<style>
+    html, body { margin: 0; padding: 0; overflow: hidden; }
+    #f { display: block; width: 1200px; height: 820px; border: 0; }
+</style>
+<iframe id="f" src="/?embed=1&amp;proto=json&amp;spin=0&amp;libraries=0&amp;noSaveBtn=1&amp;noExitBtn=1&amp;ui=kennedy&amp;aiScopeDebug=1"></iframe>
+<script>
+    window.__msgs = [];
+    window.__initAt = null;
+    window.__send = function (obj) {
+        document.getElementById("f").contentWindow.postMessage(JSON.stringify(obj), "*");
+    };
+    window.addEventListener("message", function (e) {
+        var m;
+        try { m = typeof e.data === "string" ? JSON.parse(e.data) : e.data; } catch (err) { return; }
+        if (!m || !m.event) return;
+        window.__msgs.push(Object.assign({ __at: Date.now() }, m));
+        if (m.event === "init") window.__initAt = Date.now();
+    });
+</script>

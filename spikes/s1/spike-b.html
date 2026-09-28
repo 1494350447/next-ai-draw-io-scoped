@@ -1,0 +1,24 @@
+<!doctype html>
+<!-- S1 spike 验证 B 的宿主页面：只负责把编辑器框进 iframe（drawio 只在被框住时才发 init），
+     以及在 load 完成后提供稳定的坐标基准。驱动逻辑全在 harness/spike-b.mjs（Playwright）。 -->
+<meta charset="utf-8" />
+<title>s1 probe host</title>
+<style>
+    html, body { margin: 0; padding: 0; overflow: hidden; }
+    #f { display: block; width: 1200px; height: 820px; border: 0; }
+</style>
+<iframe id="f" src="/?embed=1&amp;proto=json&amp;spin=0&amp;libraries=0&amp;noSaveBtn=1&amp;noExitBtn=1&amp;ui=kennedy&amp;aiScopeDebug=1"></iframe>
+<script>
+    window.__msgs = [];
+    window.__initAt = null;
+    window.__send = function (obj) {
+        document.getElementById("f").contentWindow.postMessage(JSON.stringify(obj), "*");
+    };
+    window.addEventListener("message", function (e) {
+        var m;
+        try { m = typeof e.data === "string" ? JSON.parse(e.data) : e.data; } catch (err) { return; }
+        if (!m || !m.event) return;
+        window.__msgs.push(m);
+        if (m.event === "init") window.__initAt = Date.now();
+    });
+</script>

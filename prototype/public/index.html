@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>作用域编辑 · Phase 1 骨架原型</title>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+<header>
+    <h1>作用域编辑骨架</h1>
+    <label class="small">样例
+        <select id="sample">
+            <option value="small-flow">small-flow（小流程图，7 顶点 2 边）</option>
+            <option value="aws-demo">aws-demo（真实图，含嵌套容器）</option>
+            <option value="cat-demo">cat-demo（自由绘制，边没有 source/target）</option>
+        </select>
+    </label>
+    <label class="small"><input type="checkbox" id="edges" checked /> 相连的边算作用域内</label>
+    <label class="small" title="默认直接应用：说一句就改，改完只告诉你走的规则还是模型。勾上后先出确认单，点「应用」才写入"><input type="checkbox" id="confirm-mode" /> 先预览再应用</label>
+    <span class="spacer"></span>
+    <span class="badge" id="b-cells">cell <b>-</b></span>
+    <span class="badge" id="b-scope">作用域 <b>-</b></span>
+    <span class="badge" id="b-token">scoped/全量 <b>-</b></span>
+    <span class="badge" id="b-guard">guard <b>-</b></span>
+</header>
+
+<main>
+    <section class="pane">
+        <h2>大纲（勾选 = 作用域 roots）</h2>
+        <div class="body">
+            <div class="cmds">
+                <button id="sel-none">清空</button>
+                <button id="sel-vertices">全部顶点</button>
+                <button id="sel-layer">顶层元素</button>
+            </div>
+            <div class="tree" id="tree"></div>
+        </div>
+    </section>
+
+    <section class="pane" id="preview-pane">
+        <h2>结构预览（点空白清空 · 点元素切换 · 拖拽框选 · Shift 加选 · Esc 清空）</h2>
+        <div class="body" style="padding:0; display:flex;">
+            <svg id="svg" viewBox="0 0 800 600" preserveAspectRatio="xMinYMin meet"></svg>
+        </div>
+        <div class="floatbar" id="floatbar" hidden>
+            <div class="fl-title">对选中的 <b id="fl-count">0</b> 个元素说 <span class="hint">（右键元素也能唤出）</span></div>
+            <div class="fl-row">
+                <input id="instr" type="text" placeholder="左对齐 / 变成红色 / 字号 20 / 等宽 …" />
+                <button id="instr-go" class="primary">执行</button>
+            </div>
+            <div class="fl-hint small" id="instr-hint">说一句怎么改：命中规则的<b>就地执行</b>（不花模型）；没命中的<b>自动交给模型</b>。执行完会告诉你走的是哪条通道</div>
+        </div>
+        <div class="legend">
+            <span><i style="background:#2f9e63"></i>可改（writable）</span>
+            <span><i style="background:#3b7dd8"></i>只读邻域（context）</span>
+            <span><i style="background:#6b7280"></i>全局骨架（skeleton）</span>
+            <span><i style="background:#ffa94d"></i>本次改动</span>
+        </div>
+    </section>
+
+    <section class="pane">
+        <h2>确定性命令 + 服务端 guard</h2>
+        <div class="body">
+            <div class="cmds" id="cmds"></div>
+            <div id="report"></div>
+            <div class="panel">
+                <h3>结果 XML（可直接粘回 drawio）</h3>
+                <div class="content"><textarea id="out" spellcheck="false"></textarea></div>
+            </div>
+        </div>
+    </section>
+</main>
+<script type="module" src="/app.mjs"></script>
+</body>
+</html>

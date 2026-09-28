@@ -1,0 +1,150 @@
+<!doctype html>
+<!-- S1 spike harness。必须和 drawio 同源（放在 drawio 的 webapp 目录下）才能直接驱动 iframe 里的编辑器。 -->
+<meta charset="utf-8" />
+<title>ai-scope S1 spike</title>
+<!-- aiScopeDebug=1 是适配层自带的调试开关：脚本要直接读 window.__aiScope 才需要它 -->
+<style>
+    body { font: 12px/1.5 monospace; margin: 8px; }
+    #f { width: 900px; height: 520px; border: 1px solid #999; }
+    #out { white-space: pre-wrap; background: #f6f6f6; padding: 8px; }
+</style>
+<pre id="out">boot</pre>
+<!-- 注意：不再用 ?plugins=plugins/ai-scope.js —— 实测这个 drawio 版本只认内置插件白名单，
+     自定义插件由容器内的 PreConfig.js 注入（见 drawio-custom/PreConfig.js）。 -->
+<iframe id="f" src="/?embed=1&proto=json&spin=0&libraries=0&noSaveBtn=1&noExitBtn=1&ui=kennedy&aiScopeDebug=1"></iframe>
+<script>
+    var DIAGRAM =
+        '<mxGraphModel dx="800" dy="600" grid="1" gridSize="10" page="1" pageScale="1" pageWidth="850" pageHeight="1100"><root>' +
+        '<mxCell id="0"/><mxCell id="1" parent="0"/>' +
+        '<mxCell id="2" value="Alpha" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="80" y="80" width="140" height="60" as="geometry"/></mxCell>' +
+        '<mxCell id="3" value="Beta" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="320" y="80" width="140" height="60" as="geometry"/></mxCell>' +
+        '<mxCell id="4" style="edgeStyle=orthogonalEdgeStyle;endArrow=classic;" edge="1" parent="1" source="2" target="3"><mxGeometry relative="1" as="geometry"/></mxCell>' +
+        '</root></mxGraphModel>';
+
+    var f = document.getElementById("f");
+    var out = document.getElementById("out");
+    var R = { pluginLoaded: false, initReceived: false, loadSent: false, aiScopeEvents: [], click: null, invokeAction: null, errors: [] };
+    window.R = R; // 结果出口：Playwright 直接读 window.R，无需外部接收器
+
+    function log() {
+        var line = Array.prototype.map.call(arguments, function (a) { return typeof a === "string" ? a : JSON.stringify(a); }).join(" ");
+        out.textContent += "\n" + line;
+    }
+    function finish() {
+        window.R = R;
+        out.textContent += "\nSPIKE_RESULT=" + JSON.stringify(R);
+        document.title = "DONE";
+    }
+
+    window.addEventListener("message", function (e) {
+        var m;
+        try { m = typeof e.data === "string" ? JSON.parse(e.data) : e.data; } catch (err) { return; }
+        if (!m || !m.event) return;
+
+        if (m.event === "aiScopeReady") {
+            R.pluginLoaded = true;
+            R.pluginMeta = { version: m.version, hasMenus: m.hasMenus, hasAddAction: m.hasAddAction, menuKeys: m.menuKeys };
+            log("RECV aiScopeReady", m);
+        } else if (m.event === "aiScope") {
+            R.aiScopeEvents.push({ reason: m.reason, count: m.count, ids: (m.cells || []).map(function (c) { return c.id; }) });
+            log("RECV aiScope", { reason: m.reason, count: m.count, ids: (m.cells || []).map(function (c) { return c.id; }) });
+        } else if (m.event === "aiScopeError") {
+            R.errors.push(m);
+            log("RECV aiScopeError", m);
+        } else if (m.event === "init") {
+            R.initReceived = true;
+            log("RECV init -> 发送 load");
+            f.contentWindow.postMessage(JSON.stringify({ action: "load", xml: DIAGRAM }), "*");
+            R.loadSent = true;
+        } else {
+            log("RECV " + m.event);
+        }
+    });
+
+    function waitFor(fn, timeout, label) {
+        return new Promise(function (resolve) {
+            var t0 = Date.now();
+            (function poll() {
+                var v;
+                try { v = fn(); } catch (e) {}
+                if (v) return resolve(v);
+                if (Date.now() - t0 > timeout) { log("TIMEOUT waiting for " + label); return resolve(null); }
+                setTimeout(poll, 200);
+            })();
+        });
+    }
+
+    (async function run() {
+        log("等待编辑器就绪");
+        var w = await waitFor(function () {
+            return f.contentWindow && f.contentWindow.__aiScope && f.contentWindow.__aiScope.graph ? f.contentWindow : null;
+        }, 20000, "__aiScope");
+        if (!w) { R.errors.push({ where: "harness", error: "插件没有暴露 __aiScope（插件可能未加载）" }); return finish(); }
+
+        R.drawioVersion = w.__aiScope.version();
+        log("drawio 版本:", R.drawioVersion);
+
+        // 等图 load 完
+        await new Promise(function (r) { setTimeout(r, 1500); });
+
+        // ===== 验证 1：模拟真人点击一个节点，看选区是否被插件读到并回传 =====
+        try {
+            var g = w.__aiScope.graph, model = g.getModel(), root = model.getRoot();
+            // 注意：mxGraph 的 getChildren(root) 只返回 layer，必须遍历 model.cells 才拿得到真正的顶点
+            var vertices = Object.keys(model.cells).map(function (k) { return model.cells[k]; }).filter(function (c) { return model.isVertex(c); });
+            var target = vertices[0];
+            g.scrollCellToVisible(target); // 先滚进可视区，否则算出来的点落在容器外
+            var st = g.view.getState(target);
+            var cont = g.container;
+            var rect = cont.getBoundingClientRect();
+            // state 坐标已含 translate/scale（内容空间），减掉滚动量才是视口坐标
+            var cx = rect.left - cont.scrollLeft + st.getCenterX();
+            var cy = rect.top - cont.scrollTop + st.getCenterY();
+            var doc = f.contentDocument;
+            var el = doc.elementFromPoint(cx, cy);
+            R.click = { targetId: target.getId(), clientX: Math.round(cx), clientY: Math.round(cy), hitTag: el ? el.tagName : null, insideGraph: !!(el && g.container.contains(el)) };
+            if (el) {
+                // mxGraph 新版手势处理走 pointer 事件，只发 mouse 事件选不中；两套都发。
+                var seq = [
+                    ["pointerdown", 1], ["mousedown", 1],
+                    ["pointerup", 0], ["mouseup", 0], ["click", 0],
+                ];
+                R.click.dispatched = [];
+                seq.forEach(function (s) {
+                    var type = s[0], down = s[1] === 1;
+                    var init = {
+                        bubbles: true, cancelable: true, view: w, detail: 1,
+                        clientX: cx, clientY: cy, button: 0, buttons: down ? 1 : 0,
+                    };
+                    var ev;
+                    if (type.indexOf("pointer") === 0 && typeof w.PointerEvent === "function") {
+                        ev = new w.PointerEvent(type, Object.assign({ pointerId: 1, pointerType: "mouse", isPrimary: true, width: 1, height: 1, pressure: down ? 0.5 : 0 }, init));
+                    } else {
+                        ev = new w.MouseEvent(type, init);
+                    }
+                    var ok = el.dispatchEvent(ev);
+                    R.click.dispatched.push(type + (ok ? "" : "(prevented)"));
+                });
+                log("已派发合成事件序列", R.click.dispatched);
+            }
+            await new Promise(function (r) { setTimeout(r, 1200); });
+            R.click.selectionAfterCount = (w.__aiScope.graph.getSelectionCells() || []).length;
+            R.click.scopeEventSeen = R.aiScopeEvents.some(function (e) { return e.reason === "selectionChanged"; });
+        } catch (e) {
+            R.errors.push({ where: "click", error: String(e) });
+            log("click 阶段异常", String(e));
+        }
+
+        // ===== 验证 2：宿主用 invokeAction 驱动插件动作（父→编辑器反向通道）=====
+        try {
+            log("发送 invokeAction aiScopeSelectTop");
+            f.contentWindow.postMessage(JSON.stringify({ action: "invokeAction", actionName: "aiScopeSelectTop" }), "*");
+            await new Promise(function (r) { setTimeout(r, 1200); });
+            var ev = R.aiScopeEvents.filter(function (e) { return e.reason === "selectTop"; }).pop();
+            R.invokeAction = { worked: !!ev, count: ev ? ev.count : 0, ids: ev ? ev.ids : [] };
+        } catch (e) {
+            R.errors.push({ where: "invokeAction", error: String(e) });
+        }
+        finish();
+    })();
+</script>
