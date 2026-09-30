@@ -1,6 +1,6 @@
 # 部署与维护
 
-本目录部署两个服务：Next AI Draw.io（3000）和自建 draw.io（8080）。
+本目录部署两个服务：Next AI Draw.io（容器内 3000）和自建 draw.io（容器内 8080）。仅发布应用端口，浏览器通过主应用的 `/drawio/` 同源访问画布。
 局部编辑已经接入主应用的 `/api/scoped-edit`，无需独立模型服务或 8787 端口。
 
 ## 环境要求
@@ -8,7 +8,7 @@
 - Linux、Bash、Python >= 3.9、curl、ss（iproute2）、sha256sum。
 - Docker Engine >= 24 且可供当前用户使用；Compose >= 2.24.4，支持 `dockerfile_inline` 和 `!override`。
 - 建议预留至少 6 GB 磁盘空间供镜像与构建缓存使用；实际需求随依赖变化。
-- 端口 3000、8080 可用；构建机器能够访问 Docker Registry、Alpine 软件源和 npm 镜像源。
+- 应用宿主端口可用（`APP_PORT` 默认 3000）；构建机器能够访问 Docker Registry、Alpine 软件源和 npm 镜像源。
 - 可用的模型账号；默认模板使用 DeepSeek，模型 ID 以提供方实际支持为准。
 
 宿主机无需 Node.js、npm、PyYAML；Node 依赖在镜像中安装。
@@ -110,7 +110,10 @@ cd next-ai-draw-io
 | --- | --- |
 | AI_PROVIDER、AI_MODEL、API key、ACCESS_CODE_LIST、ADMIN_PASSWORD | 修改 .env 后运行 `./deploy.sh up` |
 | DRAWIO_PUBLIC_URL | 浏览器构建期地址，修改后运行 `./deploy.sh deploy` 重建应用 |
-| AI_SCOPE_ENDPOINT | 插件直连后备地址/CSP，修改后运行 `./deploy.sh up` 更新入口，再刷新浏览器 |
+| AI_SCOPE_ENDPOINT | 独立画布直连地址/CSP，修改后运行 `./deploy.sh up`；嵌入模式不自动回退直连 |
+| APP_BIND_ADDRESS、APP_PORT | 修改宿主监听地址和端口后运行 `./deploy.sh up`，无需重建 |
+| NEXT_PUBLIC_BASE_PATH | 修改应用子路径后运行 `./deploy.sh deploy` 重建；默认空 |
+| COMPOSE_PROJECT_NAME | 实例名；不同实例使用独立项目目录，避免共享 data/ 和配置 |
 | upstream/ 下源码 | `./deploy.sh deploy` |
 | ai-scope.js | `./deploy.sh up` 会自动更新指纹，随后刷新浏览器 |
 | 生成器模板 | 先 `python3 tools/gen-override.py`，再 `./deploy.sh deploy` |
@@ -119,9 +122,10 @@ AI_PROVIDER 决定服务端提供方，AI_MODEL 决定默认模型；前端模�
 默认值来自部署模板，并非偷偷写入画布。换提供方时参考 `upstream/env.example` 和
 `upstream/lib/ai-providers.ts` 配置对应 key；不能只更换模型名字而保留不兼容的提供方。
 
-同网段访问：把 `DRAWIO_PUBLIC_URL` 改为 `http://<主机IP>:8080`，
-`AI_SCOPE_ENDPOINT` 改为 `http://<主机IP>:3000`，再运行 `./deploy.sh deploy`。
-这两个地址由浏览器访问，不能填 Docker 服务名。跨机、HTTPS 反代和子路径部署未在本次实测中覆盖。
+同网段访问：`DRAWIO_PUBLIC_URL` 和 `AI_SCOPE_ENDPOINT` 保持留空，浏览器访问 `http://<主机IP>:<APP_PORT>/`。
+默认镜像不绑定公网 IP、域名或协议，更换外部访问地址无需重建。已有旧配置不会自动覆盖；迁移时清空这两个地址并运行 `./deploy.sh deploy`。
+子路径、HTTPS 反代、多实例、独立画布及浏览器验收见 [服务器部署方案](docs/SERVER_DEPLOYMENT.md)。
+`up` 会对照镜像构建记录检查画布地址和子路径；不匹配时要求重建，不会把旧镜像当作新配置启动。
 
 ## 生成物与版本
 
@@ -134,7 +138,7 @@ AI_PROVIDER 决定服务端提供方，AI_MODEL 决定默认模型；前端模�
 
 PreConfig 通过只读挂载覆盖官方入口，插件挂在 `plugins/custom/`，不会覆盖官方插件。
 draw.io entrypoint 可能打印无法写 PreConfig 的警告；这是此挂载方式的已知表现。
-其运行期 SSL、context path 改写也会被跳过；本部署验证的是 8080 HTTP 访问。
+其运行期 SSL、context path 改写也会被跳过；画布在内部网络使用 HTTP，外部 TLS 在反代入口终止。
 
 ## 数据与交付
 
@@ -153,5 +157,5 @@ draw.io entrypoint 可能打印无法写 PreConfig 的警告；这是此挂载�
 - **旧版编号/面板仍在**：先 up 刷新插件指纹，再刷新浏览器；必要时强制刷新。
 - **模型请求失败**：运行 smoke；排查提供方、模型 ID、key、余额、网络和访问码。脚本不会打印密钥或将模型原始响应存入交付包。
 - **Failed to fetch / 8787**：生产环境不使用原型服务；检查新插件是否加载、主页面是否为新构建、AI_SCOPE_ENDPOINT 是否可由浏览器访问。
-- **端口冲突**：脚本会停止，先定位占用服务；当前交付固定 3000/8080，不支持仅用变量改端口。
+- **端口冲突**：修改 `APP_PORT` 后运行 `./deploy.sh up`；draw.io 默认不发布宿主端口。
 - **更换机器后无法构建**：运行 doctor；确认 Docker Registry、Alpine 和 npm 源可达，以及 Compose 版本足够。

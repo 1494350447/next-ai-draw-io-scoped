@@ -10,6 +10,7 @@ import {
     ResizablePanelGroup,
 } from "@/components/ui/resizable"
 import { useDiagram } from "@/contexts/diagram-context"
+import { getAssetUrl } from "@/lib/base-path"
 import { type DrawioTheme, isDrawioTheme } from "@/lib/drawio-themes"
 import { i18n, type Locale } from "@/lib/i18n/config"
 
@@ -33,7 +34,7 @@ export default function Home() {
     const [isDrawioReady, setIsDrawioReady] = useState(false)
     const [isElectron, setIsElectron] = useState(false)
     const [drawioBaseUrl, setDrawioBaseUrl] = useState(
-        process.env.NEXT_PUBLIC_DRAWIO_BASE_URL || "https://embed.diagrams.net",
+        process.env.NEXT_PUBLIC_DRAWIO_BASE_URL || "",
     )
 
     const chatPanelRef = useRef<ImperativePanelHandle>(null)
@@ -79,7 +80,14 @@ export default function Home() {
             !!(window as unknown as { electronAPI?: unknown }).electronAPI
         if (electronDetected) {
             setIsElectron(true)
-            setDrawioBaseUrl(`${window.location.origin}/drawio/index.html`)
+        }
+        if (!process.env.NEXT_PUBLIC_DRAWIO_BASE_URL) {
+            setDrawioBaseUrl(
+                new URL(
+                    getAssetUrl("/drawio/index.html"),
+                    window.location.origin,
+                ).href,
+            )
         }
 
         setIsLoaded(true)

@@ -7,10 +7,12 @@
 # env_file: .env 与 volumes: ./data 也一并落在工作目录里。
 #
 # 本文件由 tools/gen-override.py 生成，不要手改；改生成脚本后重跑一次。
+name: ${COMPOSE_PROJECT_NAME:-next-ai-draw-io}
 services:
   drawio:
     image: jgraph/drawio@sha256:4bd19d4bc36b65cabf1ae9c5d234597e564416b6c67f7d4db296c2df758fcb52
     restart: unless-stopped
+    ports: !override []
     volumes:
       # drawio 官方留给自托管的定制入口，在应用脚本之前执行（见 tools/gen_drawio_custom.py）。
       # 只读挂载：容器 entrypoint 每次启动都会重写这个文件，不顶掉它的话重启即失效。
@@ -20,6 +22,13 @@ services:
 
   next-ai-draw-io:
     restart: unless-stopped
+    ports: !override
+      - target: 3000
+        published: "${APP_PORT:-3000}"
+        host_ip: "${APP_BIND_ADDRESS:-0.0.0.0}"
+    env_file: !override
+      - path: .env
+        required: false
     build:
       # 上游是 context: .，这里显式指到 checkout，避免依赖叠加顺序解析相对路径。
       context: ./upstream
@@ -74,6 +83,8 @@ services:
         ARG NEXT_PUBLIC_SELFHOSTED=""
         ENV NEXT_PUBLIC_SELFHOSTED="$${NEXT_PUBLIC_SELFHOSTED}"
 
+        RUN node -e 'require("fs").writeFileSync("deployment-config.json", JSON.stringify({basePath: process.env.NEXT_PUBLIC_BASE_PATH || "", drawioBaseUrl: process.env.NEXT_PUBLIC_DRAWIO_BASE_URL || ""}))'
+
         # Build Next.js application (standalone mode)
         # [deploy-override] begin: use the stable webpack production build
         RUN npm run build -- --webpack
@@ -97,6 +108,7 @@ services:
         # Copy standalone build output
         COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
         COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+        COPY --from=builder /app/deployment-config.json ./deployment-config.json
 
         # Writable dir for admin panel settings (data/settings.json)
         RUN mkdir -p /app/data && chown nextjs:nodejs /app/data
@@ -112,7 +124,10 @@ services:
         CMD ["sh", "-c", "HOSTNAME=0.0.0.0 exec node server.js"]
       # 上游 args 是列表，这里用映射整体覆盖。
       args: !override
-        NEXT_PUBLIC_DRAWIO_BASE_URL: ${DRAWIO_PUBLIC_URL:-http://localhost:8080}
+        # 默认留空：画布经本应用反代到 /drawio（见 upstream/next.config.ts），
+        # 浏览器只访问本应用端口。仅当指向独立域名/端口时才设置 DRAWIO_PUBLIC_URL。
+        NEXT_PUBLIC_DRAWIO_BASE_URL: ${DRAWIO_PUBLIC_URL:-}
+        NEXT_PUBLIC_BASE_PATH: ${NEXT_PUBLIC_BASE_PATH:-}
         # 自建实例：不显示赞助/自托管引导文案
         NEXT_PUBLIC_SELFHOSTED: "true"
         NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}

@@ -19,14 +19,15 @@ CUSTOM_SOURCE = [
     "tests/unit/scoped-edit-route.test.ts",
     "tests/unit/scoped-edit.test.ts",
     "tests/unit/scoped-rules.test.ts",
+    "tests/unit/deployment-routing.test.ts",
 ]
 DEPLOY_FILES = [
     "README.md", "DEPLOY.md", "deploy-report.md", "deploy.sh", "setup.sh", "install-env.sh",
-    "docker-compose.yml", ".env.example", ".gitignore",
-    "docs/ARCHITECTURE.md", "docs/USAGE.md",
+    "docker-compose.yml", "docker-compose.debug.yml", ".env.example", ".gitignore",
+    "docs/ARCHITECTURE.md", "docs/USAGE.md", "docs/SERVER_DEPLOYMENT.md",
     "tools/gen-override.py", "tools/gen_drawio_custom.py",
     "tools/deploy_check.py", "tools/package_release.py", "tools/setup_config.py",
-    "tests/test_setup.py",
+    "tests/test_setup.py", "tests/test_deployment.py", "tests/plugin-channel.test.cjs", "tests/server-browser.cjs",
     "drawio-custom/PreConfig.js", "drawio-custom/PreConfig.image-orig.js",
     "drawio-custom/image.lock.json", "drawio-custom/plugins/ai-scope.js",
 ]
@@ -48,9 +49,9 @@ def source_files():
             raise RuntimeError("存在未列入交付清单的源码，请先审核: " + ", ".join(sorted(unknown)))
         return revision, sorted(set(tracked) | set(CUSTOM_SOURCE))
     manifest = json.loads((ROOT / "release-manifest.json").read_text())
-    return manifest["upstream_commit"], [
+    return manifest["upstream_commit"], sorted(set([
         name.removeprefix("upstream/") for name in manifest["files"] if name.startswith("upstream/")
-    ]
+    ]) | set(CUSTOM_SOURCE))
 
 
 def main():
@@ -86,7 +87,7 @@ def main():
             target = bundle / path
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, target)
-        environment = dict(os.environ, AI_SCOPE_ENDPOINT="http://localhost:3000", PYTHONDONTWRITEBYTECODE="1")
+        environment = dict(os.environ, AI_SCOPE_ENDPOINT="", PYTHONDONTWRITEBYTECODE="1")
         subprocess.run(["python3", str(bundle / "tools/gen_drawio_custom.py"), "build"], check=True, env=environment, stdout=subprocess.DEVNULL)
         manifest = {
             "created_at": stamp,

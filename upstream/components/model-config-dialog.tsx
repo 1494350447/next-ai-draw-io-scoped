@@ -346,10 +346,11 @@ export function ModelConfigDialog({
             try {
                 // For EdgeOne, construct baseUrl from current origin
                 const baseUrl = isEdgeOne
-                    ? `${window.location.origin}/api/edgeai`
+                    ? `${window.location.origin}${getApiEndpoint("/api/edgeai")}`
                     : selectedProvider.baseUrl
 
-                const response = await fetch("/api/validate-model", {
+                const validationUrl = getApiEndpoint("/api/validate-model")
+                const response = await fetch(validationUrl, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({

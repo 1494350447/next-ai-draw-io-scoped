@@ -111,6 +111,8 @@ class SetupTests(unittest.TestCase):
 
     def test_real_environment_gate_checks_versions_permissions_and_ports(self):
         shutil.copy2(ROOT / "deploy.sh", self.directory / "deploy.sh")
+        (self.directory / "tools").mkdir()
+        shutil.copy2(ROOT / "tools/deploy_check.py", self.directory / "tools/deploy_check.py")
         binary = self.directory / "bin"
         binary.mkdir()
         for relative in (
@@ -123,9 +125,10 @@ class SetupTests(unittest.TestCase):
         docker = binary / "docker"
         docker.write_text(
             f"#!{sys.executable}\n"
-            "import os,sys\n"
+            "import os,sys,json\n"
             "arguments=sys.argv[1:]\n"
             "if arguments[:2]==['compose','version']: print(os.getenv('MOCK_COMPOSE','2.24.4'))\n"
+            "elif arguments[0]=='compose' and 'config' in arguments: print(json.dumps({'name':'test','services':{'next-ai-draw-io':{'ports':[{'target':3000,'published':'3300'}],'build':{'args':{}}}}}))\n"
             "elif arguments[0]=='version': print(os.getenv('MOCK_DOCKER','24.0.0'))\n"
             "elif arguments[0]=='info': sys.exit(int(os.getenv('MOCK_DENIED','0')))\n"
         )

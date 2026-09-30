@@ -31,7 +31,8 @@ export function proxy(request: NextRequest) {
     if (
         pathname.startsWith("/api/") ||
         pathname.startsWith("/_next/") ||
-        pathname.startsWith("/drawio") ||
+        pathname === "/drawio" ||
+        pathname.startsWith("/drawio/") ||
         pathname.includes("/favicon") ||
         /\.(.*)$/.test(pathname)
     ) {
@@ -49,16 +50,13 @@ export function proxy(request: NextRequest) {
         const locale = getLocale(request)
 
         // Redirect to localized path
-        return NextResponse.redirect(
-            new URL(
-                `/${locale}${pathname.startsWith("/") ? "" : "/"}${pathname}`,
-                request.url,
-            ),
-        )
+        const url = request.nextUrl.clone()
+        url.pathname = `/${locale}${pathname.startsWith("/") ? "" : "/"}${pathname}`
+        return NextResponse.redirect(url)
     }
 }
 
 export const config = {
     // Matcher ignoring `/_next/` and `/api/`
-    matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
+    matcher: ["/", "/((?!api|_next/static|_next/image|favicon.ico).*)"],
 }
