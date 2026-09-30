@@ -14,6 +14,31 @@ const nextConfig: NextConfig = {
     outputFileTracingIncludes: {
         "*": ["./instrumentation.ts"],
     },
+    async redirects() {
+        return [
+            {
+                source: "/drawio",
+                destination: "/drawio/index.html",
+                permanent: false,
+            },
+        ]
+    },
+    async headers() {
+        return [
+            {
+                source: "/drawio/js/PreConfig.js",
+                headers: [{ key: "Cache-Control", value: "no-cache" }],
+            },
+        ]
+    },
+    async rewrites() {
+        return [
+            {
+                source: "/drawio/:path*",
+                destination: "http://drawio:8080/:path*",
+            },
+        ]
+    },
 }
 
 export default nextConfig

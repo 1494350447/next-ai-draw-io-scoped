@@ -40,6 +40,8 @@ ENV NEXT_PUBLIC_BASE_PATH=${NEXT_PUBLIC_BASE_PATH}
 ARG NEXT_PUBLIC_SELFHOSTED=""
 ENV NEXT_PUBLIC_SELFHOSTED="${NEXT_PUBLIC_SELFHOSTED}"
 
+RUN node -e 'require("fs").writeFileSync("deployment-config.json", JSON.stringify({basePath: process.env.NEXT_PUBLIC_BASE_PATH || "", drawioBaseUrl: process.env.NEXT_PUBLIC_DRAWIO_BASE_URL || ""}))'
+
 # Build Next.js application (standalone mode)
 RUN npm run build
 
@@ -60,6 +62,7 @@ COPY --from=builder /app/public ./public
 # Copy standalone build output
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder /app/deployment-config.json ./deployment-config.json
 
 # Writable dir for admin panel settings (data/settings.json)
 RUN mkdir -p /app/data && chown nextjs:nodejs /app/data
@@ -73,4 +76,3 @@ ENV HOSTNAME="0.0.0.0"
 
 # Start the application (HOSTNAME override needed for AWS App Runner)
 CMD ["sh", "-c", "HOSTNAME=0.0.0.0 exec node server.js"]
-

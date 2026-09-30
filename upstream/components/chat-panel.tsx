@@ -183,6 +183,10 @@ export default function ChatPanel({
 
     useEffect(() => {
         const handleScopedEditProxyRequest = (event: MessageEvent) => {
+            const frame = Array.from(document.querySelectorAll("iframe")).find(
+                (candidate) => candidate.contentWindow === event.source,
+            )
+            if (!frame || new URL(frame.src).origin !== event.origin) return
             const data = event.data as {
                 type?: string
                 requestId?: string
@@ -219,6 +223,7 @@ export default function ChatPanel({
 
             void fetch(getApiEndpoint("/api/scoped-edit"), {
                 method: "POST",
+                signal: AbortSignal.timeout(140000),
                 headers,
                 body: JSON.stringify({
                     xml: data.xml,
@@ -244,7 +249,7 @@ export default function ChatPanel({
                             type: "aiScopeProxyResponse",
                             requestId: data.requestId,
                             ...response,
-                        }, "*")
+                        }, event.origin)
                     }
                 })
         }

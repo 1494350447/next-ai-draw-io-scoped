@@ -52,10 +52,18 @@ HEADER = """# 上游 compose 的覆盖层。不复制、不改写上游文件，
 # 本文件由 tools/gen-override.py 生成，不要手改；改生成脚本后重跑一次。
 """
 
-TEMPLATE = """services:
+TEMPLATE = """name: ${{COMPOSE_PROJECT_NAME:-next-ai-draw-io}}
+services:
 {drawio}
   next-ai-draw-io:
     restart: unless-stopped
+    ports: !override
+      - target: 3000
+        published: "${{APP_PORT:-3000}}"
+        host_ip: "${{APP_BIND_ADDRESS:-0.0.0.0}}"
+    env_file: !override
+      - path: .env
+        required: false
     build:
       # 上游是 context: .，这里显式指到 checkout，避免依赖叠加顺序解析相对路径。
       context: ./upstream
@@ -63,7 +71,10 @@ TEMPLATE = """services:
 {inline}
       # 上游 args 是列表，这里用映射整体覆盖。
       args: !override
-        NEXT_PUBLIC_DRAWIO_BASE_URL: ${{DRAWIO_PUBLIC_URL:-http://localhost:8080}}
+        # 默认留空：画布经本应用反代到 /drawio（见 upstream/next.config.ts），
+        # 浏览器只访问本应用端口。仅当指向独立域名/端口时才设置 DRAWIO_PUBLIC_URL。
+        NEXT_PUBLIC_DRAWIO_BASE_URL: ${{DRAWIO_PUBLIC_URL:-}}
+        NEXT_PUBLIC_BASE_PATH: ${{NEXT_PUBLIC_BASE_PATH:-}}
         # 自建实例：不显示赞助/自托管引导文案
         NEXT_PUBLIC_SELFHOSTED: "true"
         NPM_REGISTRY: ${{NPM_REGISTRY:-https://registry.npmmirror.com}}

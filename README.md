@@ -113,7 +113,7 @@ Ubuntu 24.04 首次准备环境：
 | 地址 | 用途 |
 | --- | --- |
 | <http://127.0.0.1:3000/> | 主应用：聊天绘图及画布 |
-| <http://127.0.0.1:8080/> | 自建 draw.io 编辑器 |
+| <http://127.0.0.1:3000/drawio/index.html> | 同源代理的 draw.io 编辑器；日常从主应用使用 |
 
 建议从主应用进入画布，局部编辑会通过主应用代理复用页面中的模型配置。
 
@@ -128,7 +128,7 @@ Ubuntu 24.04 首次准备环境：
 | Docker Compose | 2.24.4 或更新版本，使用 `docker compose` 命令 |
 | Python | 3.9 或更新版本，用于部署配置和资产生成 |
 | 其它工具 | Bash、curl、ss（iproute2）、sha256sum 等 Linux 基础工具 |
-| 端口 | 宿主机 3000、8080 可用，或已由本项目占用 |
+| 端口 | 应用宿主端口可用，默认 3000；draw.io 不发布宿主端口 |
 | 磁盘 | 建议预留至少 6 GiB，构建缓存会额外占用空间 |
 | 构建网络 | 能访问 Docker 镜像仓库、Alpine 软件源和配置的 npm 源 |
 | 模型网络 | 使用 AI 功能时，应用容器需能访问模型提供方 |
@@ -220,8 +220,12 @@ DEEPSEEK_BASE_URL=
 ACCESS_CODE_LIST=
 ADMIN_PASSWORD=
 
-DRAWIO_PUBLIC_URL=http://localhost:8080
-AI_SCOPE_ENDPOINT=http://localhost:3000
+APP_BIND_ADDRESS=0.0.0.0
+APP_PORT=3000
+COMPOSE_PROJECT_NAME=next-ai-draw-io
+NEXT_PUBLIC_BASE_PATH=
+DRAWIO_PUBLIC_URL=
+AI_SCOPE_ENDPOINT=
 NPM_REGISTRY=https://registry.npmmirror.com
 ```
 
@@ -237,8 +241,11 @@ NPM_REGISTRY=https://registry.npmmirror.com
 | `DEEPSEEK_BASE_URL` | 可选的 DeepSeek API 地址 | `./deploy.sh up` |
 | `ACCESS_CODE_LIST` | 可选访问码，多个码用逗号分隔；留空不校验 | `./deploy.sh up` |
 | `ADMIN_PASSWORD` | 可选后台密码；留空禁用 /admin | `./deploy.sh up` |
+| `APP_BIND_ADDRESS` / `APP_PORT` | 应用宿主监听地址和端口，默认 `0.0.0.0:3000` | `./deploy.sh up` |
+| `COMPOSE_PROJECT_NAME` | 实例名称；多实例使用独立项目目录和数据 | 创建新实例，不会自动迁移旧实例 |
+| `NEXT_PUBLIC_BASE_PATH` | 应用路径前缀，默认空；例如 `/diagram`，无尾斜杠 | `./deploy.sh deploy` 重建应用 |
 | `DRAWIO_PUBLIC_URL` | 浏览器加载的 draw.io 地址，属于构建参数 | `./setup.sh` 重建应用 |
-| `AI_SCOPE_ENDPOINT` | 插件直连后备地址，写入入口和 CSP | `./deploy.sh up`，然后刷新页面 |
+| `AI_SCOPE_ENDPOINT` | 独立画布的直连应用根地址，默认自动推导；嵌入模式通过主应用请求 | `./deploy.sh up`，然后刷新页面 |
 | `NPM_REGISTRY` | 镜像构建使用的 npm 源 | `./setup.sh` 重建应用 |
 
 页面上出现的默认模型来自服务端配置；前端选择的模型设置可以覆盖默认配置。局部编辑通过主应用代理时复用这些设置。
@@ -247,16 +254,16 @@ NPM_REGISTRY=https://registry.npmmirror.com
 
 ### 局域网访问
 
-浏览器在另一台机器上时，`localhost` 指向浏览器所在机器。需要将两个地址改为部署主机可访问的 IP 或域名，例如：
+保持画布地址和插件地址留空，从浏览器访问 `http://服务器IP:3000/`。页面、画布和 API 使用同一个入口，无需开放 8080：
 
 ```dotenv
-DRAWIO_PUBLIC_URL=http://192.168.1.100:8080
-AI_SCOPE_ENDPOINT=http://192.168.1.100:3000
+DRAWIO_PUBLIC_URL=
+AI_SCOPE_ENDPOINT=
 ```
 
-上面的 IP 仅为示例。修改后执行 `./setup.sh`，使构建期画布地址生效，再从浏览器访问部署主机的 3000 端口。
+3000 被占用时设置 `APP_PORT=3300`，执行 `./deploy.sh up`，访问服务器的 3300 端口。更换 IP、域名或 HTTPS 不需要重新构建默认同源镜像。
 
-当前脚本固定使用 3000、8080，不支持仅通过环境变量换端口。跨机、HTTPS 反代和子路径场景尚未纳入本次实测；配置细节见 [DEPLOY.md](DEPLOY.md)。
+旧版配置中的 `localhost:8080` 或 `服务器IP:8080` 不会自动清除。迁移时将上述两项留空，执行 `./deploy.sh deploy` 重建应用。域名 HTTPS、子路径、独立画布和多实例部署见 [服务器部署方案](docs/SERVER_DEPLOYMENT.md)。
 
 ## 使用局部修改
 
@@ -516,7 +523,7 @@ python3 tools/gen_drawio_custom.py check
 
 ### 页面能打开，但画布加载失败怎么办？
 
-检查 draw.io 服务状态及 `DRAWIO_PUBLIC_URL`。远端浏览器不能使用指向自己机器的 localhost。该变量属于构建参数，修改后需要重新运行 `./setup.sh`。
+运行 `./deploy.sh status` 检查实际代理入口和插件内容。普通部署将 `DRAWIO_PUBLIC_URL` 留空；修改该变量或路径前缀后需要运行 `./deploy.sh deploy`。`up` 会拒绝使用构建配置不匹配的旧镜像。
 
 ### 局部编辑提示 Failed to fetch 或仍访问 8787？
 
@@ -528,11 +535,11 @@ python3 tools/gen_drawio_custom.py check
 
 ### 安装时端口冲突怎么办？
 
-检查谁占用了 3000 或 8080。脚本识别本项目正在运行的容器；其它程序占用时会报错，需要先解决冲突，不会自动终止其它服务。
+检查谁占用了 `APP_PORT`，或修改应用宿主端口后运行 `./deploy.sh up`。脚本识别本项目正在运行的容器，不会自动终止其它服务。draw.io 默认不占用宿主机 8080。
 
 ### draw.io 日志里为什么有 PreConfig 不可写警告？
 
-PreConfig 使用只读挂载，防止官方启动入口重写插件配置。此方式可能导致官方 entrypoint 提示不可写，并跳过部分运行期配置。这是已知部署行为；当前验证的是 HTTP 8080，不包含该入口的 SSL/context 自动改写。
+PreConfig 使用只读挂载，防止官方启动入口重写插件配置。官方 entrypoint 可能提示不可写并跳过 SSL/context 自动改写；内部画布使用 HTTP，外部 HTTPS 由统一入口的反向代理处理。
 
 ### 为什么停止容器后数据还在？
 
@@ -543,7 +550,7 @@ down/reset 默认保留 data/。这是正常行为，避免把停止服务变成
 - **选区编号**：按空间位置排序，尚未锁定为整次编辑会话中不变的身份。
 - **复杂指向**：快速规则基于关键词，含编号的句子可能先命中作用于整个选区的规则；精确的参考/目标语义仍需完善。
 - **请求等待**：前端阶段提示按时间显示，尚无服务端实时进度。
-- **代理回退**：主窗口代理等待 5 秒后会尝试直连后备路径，慢模型场景可能产生重复请求，配置也可能与主窗口不同。
+- **请求超时**：嵌入模式通过主窗口请求，超时会提示失败，不自动重复提交；独立画布直连不继承主窗口访问码和模型选择。
 - **并发修改**：请求期间更换选区或修改图形，尚无完整的版本冲突与取消机制。
 - **撤销**：主应用 XML 同步可能影响 draw.io 原生撤销，不能承诺所有 AI 改动都可可靠地一步撤回。
 - **部署范围**：本机 Ubuntu 24.04 上完成过部署验证；空白系统实际安装依赖、其它发行版和远程代理场景没有全部实测。

@@ -12,7 +12,7 @@
   try {
     var s = document.createElement('meta');
     // CSP 里只有单引号，所以这里用双引号包裹，避免再套一层转义。
-    s.setAttribute('content', "default-src 'self'; script-src 'self' https://storage.googleapis.com https://apis.google.com https://docs.google.com https://code.jquery.com 'unsafe-inline'; connect-src 'self' http://localhost:3000 https://*.dropboxapi.com https://api.trello.com https://api.github.com https://raw.githubusercontent.com https://*.googleapis.com https://*.googleusercontent.com https://graph.microsoft.com https://*.1drv.com https://*.sharepoint.com https://gitlab.com https://*.google.com https://fonts.gstatic.com https://fonts.googleapis.com; img-src * data:; media-src * data:; font-src * about:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; frame-src 'self' https://*.google.com;");
+    s.setAttribute('content', "default-src 'self'; script-src 'self' https://storage.googleapis.com https://apis.google.com https://docs.google.com https://code.jquery.com 'unsafe-inline'; connect-src 'self' https://*.dropboxapi.com https://api.trello.com https://api.github.com https://raw.githubusercontent.com https://*.googleapis.com https://*.googleusercontent.com https://graph.microsoft.com https://*.1drv.com https://*.sharepoint.com https://gitlab.com https://*.google.com https://fonts.gstatic.com https://fonts.googleapis.com; img-src * data:; media-src * data:; font-src * about:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; frame-src 'self' https://*.google.com;");
     s.setAttribute('http-equiv', 'Content-Security-Policy');
     var t = document.getElementsByTagName('meta')[0];
     t.parentNode.insertBefore(s, t);
@@ -52,9 +52,10 @@ urlParams['gl'] = '0'; //Gitlab
 // 它只做适配，不含业务逻辑；宿主（next-ai-draw-io）通过 embed 的 postMessage
 // 用 {action:'invokeAction', actionName:'<名字>'} 调用里面的动作。
 // 注入时机早于 Draw 定义，插件自己会轮询等 Draw.loadPlugin（见 drawio-custom/plugins/ai-scope.js）。
-// AI_SCOPE_ENDPOINT 是 next-ai-draw-io 的局部编辑 API 端点；CSP 的 connect-src
-// 已经同步放行它的 origin，否则插件里的 fetch 会被浏览器静默掐掉。
-window.AI_SCOPE_ENDPOINT = "http://localhost:3000";
+// AI_SCOPE_ENDPOINT 是 next-ai-draw-io 的局部编辑 API 端点；留空表示同源
+// （画布经主应用反代到 /drawio，CSP 的 'self' 已经放行，插件里的 fetch 不会被掐）。
+// 只有把画布指向独立域名/端口时才需要在 .env 里显式写绝对地址。
+window.AI_SCOPE_ENDPOINT = "" || __drawioBase.replace(/\/drawio$/, '');
 window.ALLOW_CUSTOM_PLUGINS = true; // 走 ?plugins= 入口时的前置开关；本注入不依赖它，留作备用
 (function () {
     try {
@@ -63,7 +64,7 @@ window.ALLOW_CUSTOM_PLUGINS = true; // 走 ?plugins= 入口时的前置开关；
         // 起因（实测）：Tomcat 给静态文件只发 ETag/Last-Modified、**不发 Cache-Control**，
         // 浏览器按启发式缓存就把旧插件一直用下去 —— 我们删掉的功能在用户页面上"还在"。
         // 指纹由 render_preconfig() 从插件文件现算，所以改了插件要重跑 build（check 会提醒）。
-        s.src = window.AI_SCOPE_PLUGIN_URL || (__drawioBase + '/plugins/custom/ai-scope.js?v=5f127828');
+        s.src = window.AI_SCOPE_PLUGIN_URL || (__drawioBase + '/plugins/custom/ai-scope.js?v=a01b7662');
         s.async = false;
         (document.head || document.getElementsByTagName('head')[0]).appendChild(s);
     } catch (e) {} // ignore

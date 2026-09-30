@@ -48,13 +48,15 @@ CONTAINER_PLUGIN_DIR = f"{CONTAINER_WEBAPP}/plugins/custom"
 
 HOST_PRECONFIG = "./drawio-custom/PreConfig.js"
 
-# Phase 2 的"局部编辑服务"端点。生产形态直接指向 next-ai-draw-io 的 API；
+# Phase 2 的"局部编辑服务"端点。默认留空表示同源：画布经 next-ai-draw-io 反代到
+# /drawio，插件 fetch 的 /api/scoped-edit 与它同源，CSP 的 'self' 已足够。只有把
+# 画布指向独立域名/端口（跨域）时，才需要在 .env 里显式给一个绝对地址。
 # 两处要用到它，必须来自同一个值：
 #   · PreConfig 注入 window.AI_SCOPE_ENDPOINT —— 插件据此知道往哪发指令；
-#   · CSP 的 connect-src —— drawio 自带的那条 CSP 只放行 'self' 与几个第三方，
+#   · CSP 的 connect-src —— 跨域时 drawio 自带的那条 CSP 只放行 'self' 与几个第三方，
 #     不加这一条的话浏览器会直接掐掉插件的 fetch，而且报错落在 iframe 里，很难查。
-# 取值优先级：shell 环境变量 > 工作目录 .env > 默认值（本机 compose API）。
-SCOPE_ENDPOINT_DEFAULT = "http://localhost:3000"
+# 取值优先级：shell 环境变量 > 工作目录 .env > 默认（同源，空串）。
+SCOPE_ENDPOINT_DEFAULT = ""
 SCOPE_ENDPOINT_KEY = "AI_SCOPE_ENDPOINT"
 ENV_FILE = ROOT / ".env"
 
@@ -74,12 +76,22 @@ def _env_file_value(key: str) -> str:
 
 
 def scope_endpoint() -> str:
-    value = (os.environ.get(SCOPE_ENDPOINT_KEY) or _env_file_value(SCOPE_ENDPOINT_KEY) or SCOPE_ENDPOINT_DEFAULT)
-    return value.strip().rstrip("/") or SCOPE_ENDPOINT_DEFAULT
+    """显式配置的端点；空串表示同源（插件回退到 window.location.origin）。"""
+    value = os.environ.get(SCOPE_ENDPOINT_KEY)
+    if value is None:
+        value = _env_file_value(SCOPE_ENDPOINT_KEY)
+    endpoint = value.strip().strip('"').strip("'").rstrip("/")
+    if endpoint:
+        parts = urlsplit(endpoint)
+        if parts.scheme not in ("http", "https") or not parts.hostname or parts.username or parts.password or parts.query or parts.fragment or any(character.isspace() or character in "\"'<>\\" for character in endpoint):
+            raise ValueError("AI_SCOPE_ENDPOINT 必须是 HTTP(S) 应用根地址，可包含子路径，不含凭据、查询或片段")
+    return endpoint
 
 
 def scope_origin(endpoint: str) -> str:
-    """CSP 只认 origin（scheme://host:port），路径带进去是无效项。"""
+    """CSP 只认 origin（scheme://host:port），路径带进去是无效项；同源端点返回空串。"""
+    if not endpoint:
+        return ""
     parts = urlsplit(endpoint)
     return f"{parts.scheme}://{parts.netloc}" if parts.scheme and parts.netloc else endpoint
 
@@ -87,6 +99,7 @@ def scope_origin(endpoint: str) -> str:
 DRAWIO_SECTION = f"""  drawio:
     image: {DRAWIO_IMAGE}
     restart: unless-stopped
+    ports: !override []
     volumes:
       # drawio 官方留给自托管的定制入口，在应用脚本之前执行（见 tools/gen_drawio_custom.py）。
       # 只读挂载：容器 entrypoint 每次启动都会重写这个文件，不顶掉它的话重启即失效。
@@ -160,9 +173,10 @@ urlParams['gl'] = '0'; //Gitlab
 // 它只做适配，不含业务逻辑；宿主（next-ai-draw-io）通过 embed 的 postMessage
 // 用 {{action:'invokeAction', actionName:'<名字>'}} 调用里面的动作。
 // 注入时机早于 Draw 定义，插件自己会轮询等 Draw.loadPlugin（见 drawio-custom/plugins/{plugin}）。
-// AI_SCOPE_ENDPOINT 是 next-ai-draw-io 的局部编辑 API 端点；CSP 的 connect-src
-// 已经同步放行它的 origin，否则插件里的 fetch 会被浏览器静默掐掉。
-window.AI_SCOPE_ENDPOINT = "{scope_endpoint}";
+// AI_SCOPE_ENDPOINT 是 next-ai-draw-io 的局部编辑 API 端点；留空表示同源
+// （画布经主应用反代到 /drawio，CSP 的 'self' 已经放行，插件里的 fetch 不会被掐）。
+// 只有把画布指向独立域名/端口时才需要在 .env 里显式写绝对地址。
+window.AI_SCOPE_ENDPOINT = {scope_endpoint} || __drawioBase.replace(/\\/drawio$/, '');
 window.ALLOW_CUSTOM_PLUGINS = true; // 走 ?plugins= 入口时的前置开关；本注入不依赖它，留作备用
 (function () {{
     try {{
@@ -185,10 +199,13 @@ MARKER = "ai-scope-adapter"
 def render_preconfig() -> str:
     endpoint = scope_endpoint()
     origin = scope_origin(endpoint)
-    csp = CSP.replace("connect-src 'self' ", f"connect-src 'self' {origin} ")
+    csp = CSP
+    if origin:
+        # 跨域端点才需要额外放行；同源时 CSP 里的 'self' 已经覆盖。
+        csp = CSP.replace("connect-src 'self' ", f"connect-src 'self' {origin} ")
     return PRECONFIG_TEMPLATE.format(
         csp=csp,
-        scope_endpoint=endpoint,
+        scope_endpoint=json.dumps(endpoint),
         marker=MARKER,
         adapter_version=ADAPTER_VERSION,
         plugin=PLUGIN_NAME,

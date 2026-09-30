@@ -3,6 +3,6 @@
   "drawio_version": "31.4.6",
   "image_preconfig_sha256": "b8655ef28c207ec5e8d3ac207a26d5311499e0be8b97ee08aae9154d69199a07",
   "note": "image_preconfig_sha256 是镜像里原版 js/PreConfig.js 的 sha256；容器启动时 entrypoint 会重写这个文件，所以运行时内容与它不同（见 PreConfig.js 头部注释）。",
-  "generated_preconfig_sha256": "f772e826cfb94be6e93076a398b9c28e9fcccddfa99732c9bb0d6599cee121c2",
-  "scope_endpoint": "http://localhost:3000"
+  "generated_preconfig_sha256": "43efa954f4378818f671421380b106efa500b1afce4a54ec6048f97570212793",
+  "scope_endpoint": ""
 }

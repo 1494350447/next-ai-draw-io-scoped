@@ -4,20 +4,32 @@ export PYTHONDONTWRITEBYTECODE=1
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="${ROOT_DIR}/upstream"
-PROJECT_NAME="next-ai-draw-io"
 ENV_FILE="${ROOT_DIR}/.env"
 LOG_DIR="${ROOT_DIR}/logs"
-APP_PORT=3000
-DRAWIO_PORT=8080
-HEALTH_URL="http://127.0.0.1:${APP_PORT}/api/config"
 WAIT_TIMEOUT="${WAIT_TIMEOUT:-240}"
-COMPOSE=(docker compose --project-directory "$ROOT_DIR" --env-file "$ENV_FILE"
-  -f "${REPO_DIR}/docker-compose.yml" -f "${ROOT_DIR}/docker-compose.yml"
-  --project-name "$PROJECT_NAME")
+COMPOSE_ENV="$ENV_FILE"
+[[ -f "$COMPOSE_ENV" ]] || COMPOSE_ENV="${ROOT_DIR}/.env.example"
+COMPOSE=(docker compose --project-directory "$ROOT_DIR" --env-file "$COMPOSE_ENV"
+  -f "${REPO_DIR}/docker-compose.yml" -f "${ROOT_DIR}/docker-compose.yml")
 
 die() { echo "错误: $*" >&2; exit 1; }
 info() { echo "[*] $*"; }
 warn() { echo "[!] $*" >&2; }
+
+load_settings() {
+  local output
+  local settings=()
+  output="$("${COMPOSE[@]}" config --format json | python3 "${ROOT_DIR}/tools/deploy_check.py" settings)" || die "部署配置无效"
+  mapfile -t settings <<<"$output"
+  PROJECT_NAME="${settings[0]}"
+  APP_PORT="${settings[1]}"
+  APP_BIND_ADDRESS="${settings[2]}"
+  BASE_PATH="${settings[3]}"
+  DRAWIO_PUBLIC_URL="${settings[4]}"
+  APP_URL="${settings[5]}"
+  HEALTH_URL="${APP_URL}/api/config"
+  DRAWIO_URL="${APP_URL}/drawio"
+}
 
 usage() {
   cat <<'HELP'
@@ -47,6 +59,7 @@ prerequisites() {
   [[ "$WAIT_TIMEOUT" =~ ^[1-9][0-9]*$ ]] || die "WAIT_TIMEOUT 必须为正整数秒数"
   [[ -z "${DEPLOY_REPO_DIR:-}" || "$DEPLOY_REPO_DIR" == "$REPO_DIR" ]] \
     || die "请将随包定制源码放在 upstream/；当前覆盖层不支持外部 DEPLOY_REPO_DIR"
+  load_settings
 }
 
 do_environment() {
@@ -54,7 +67,7 @@ do_environment() {
   ensure_repo
   ports_free
   info "Linux / Python $(python3 --version | cut -d' ' -f2) / Docker $(docker version --format '{{.Server.Version}}') / Compose $(docker compose version --short)"
-  info "宿主端口 3000、8080 无冲突"
+  info "应用宿主端口 ${APP_PORT} 无冲突；draw.io 仅在容器网络内监听"
   local available
   available="$(df -Pk "$ROOT_DIR" | awk 'NR==2 {print $4}')"
   info "项目所在文件系统剩余空间：$((available / 1024)) MiB"
@@ -113,8 +126,9 @@ wait_ready() {
   local deadline=$((SECONDS + WAIT_TIMEOUT))
   while (( SECONDS < deadline )); do
     if compose_ready && [[ "$(http_code "$HEALTH_URL")" == "200" ]] \
-      && [[ "$(http_code "http://127.0.0.1:${DRAWIO_PORT}/js/PreConfig.js")" == "200" ]]; then
-      info "应用 /api/config 和 draw.io PreConfig.js 均已就绪"
+      && [[ "$(http_code "${DRAWIO_URL}/index.html")" == "200" ]] \
+      && [[ "$(http_code "${DRAWIO_URL}/js/PreConfig.js")" == "200" ]]; then
+      info "应用 API、画布入口和同源反代均已就绪"
       return 0
     fi
     sleep 2
@@ -126,7 +140,7 @@ wait_ready() {
 ports_free() {
   local port mine
   mine="$(docker ps --filter "label=com.docker.compose.project=${PROJECT_NAME}" --format '{{.Ports}}')"
-  for port in "$APP_PORT" "$DRAWIO_PORT"; do
+  for port in "$APP_PORT"; do
     if ss -ltn "sport = :$port" | grep -q LISTEN; then
       grep -q ":${port}->" <<<"$mine" || die "端口 $port 已被其它服务占用"
     fi
@@ -142,14 +156,16 @@ ensure_image() {
   image="$(app_image)"
   docker image inspect "$image" >/dev/null 2>&1 || die "应用镜像不存在，请先 ./deploy.sh install"
   docker run --rm --entrypoint sh "$image" -c \
-    'test -f /app/server.js && test -d /app/.next/static && test -f /app/.next/server/app/api/scoped-edit/route.js' \
-    || die "镜像缺少运行产物或局部编辑接口，请重新构建"
+    'test -f /app/server.js && test -d /app/.next/static && test -f /app/.next/server/app/api/scoped-edit/route.js && node -e '\''const config = require("/app/deployment-config.json"); process.exit(config.basePath === process.argv[1] && config.drawioBaseUrl === process.argv[2] ? 0 : 1)'\'' "$1" "$2"' \
+    sh "$BASE_PATH" "$DRAWIO_PUBLIC_URL" \
+    || die "镜像缺少运行产物或构建期配置已变化，请运行 ./deploy.sh deploy 重建"
 }
 
 drawio_custom_live() {
-  local cid base="http://127.0.0.1:${DRAWIO_PORT}" file expected actual
+  local cid base="$DRAWIO_URL" file expected actual
   cid="$("${COMPOSE[@]}" ps -q drawio)"
   [[ -n "$cid" ]] || die "draw.io 未运行"
+  curl -fsS --max-time 10 "${base}/index.html" | grep 'js/bootstrap.js' >/dev/null || die "反代入口没有返回 draw.io HTML"
   for file in js/PreConfig.js plugins/custom/ai-scope.js; do
     if [[ "$file" == js/* ]]; then
       expected="$(sha256sum "${ROOT_DIR}/drawio-custom/PreConfig.js" | cut -d' ' -f1)"
@@ -160,7 +176,7 @@ drawio_custom_live() {
     [[ "$actual" == "$expected" ]] || die "$file 的在线内容与本地不一致"
   done
   [[ "$(http_code "${base}/plugins/animation.js")" == "200" ]] || die "官方插件不可访问"
-  info "插件、PreConfig 在线内容一致，官方插件可访问"
+  info "同源画布入口、插件、PreConfig 内容一致，官方插件可访问"
 }
 
 scoped_smoke() {
@@ -168,9 +184,9 @@ scoped_smoke() {
 }
 
 print_access() {
-  info "应用：http://127.0.0.1:${APP_PORT}/"
-  info "画布：http://127.0.0.1:${DRAWIO_PORT}/"
-  info "局部编辑：主应用 /api/scoped-edit（无需 8787 服务）"
+  info "实例：${PROJECT_NAME}；监听 ${APP_BIND_ADDRESS}:${APP_PORT}"
+  info "本机检查入口：${APP_URL}/（远端浏览器请使用服务器 IP 或反代域名）"
+  info "画布：${DRAWIO_URL}/index.html；局部编辑：${APP_URL}/api/scoped-edit"
 }
 
 do_doctor() {
@@ -227,10 +243,11 @@ do_down() {
 }
 
 do_status() {
+  load_settings
   "${COMPOSE[@]}" ps -a
   compose_ready || die "部分服务未运行或不健康"
   [[ "$(http_code "$HEALTH_URL")" == "200" ]] || die "应用接口未就绪"
-  [[ "$(http_code "http://127.0.0.1:${DRAWIO_PORT}/js/PreConfig.js")" == "200" ]] || die "画布未就绪"
+  drawio_custom_live
   print_access
 }
 
@@ -246,7 +263,7 @@ do_verify() {
   [[ "$skip_ai" == "--skip-ai" ]] || scoped_smoke ai
   do_down
   [[ -z "$("${COMPOSE[@]}" ps -a -q)" ]] || die "停止后仍有项目容器残留"
-  for port in "$APP_PORT" "$DRAWIO_PORT"; do
+  for port in "$APP_PORT"; do
     if ss -ltn "sport = :$port" | grep -q LISTEN; then die "停止后端口 $port 仍被占用"; fi
   done
   do_up
@@ -273,6 +290,7 @@ case "${1:-deploy}" in
   smoke) validate_config; scoped_smoke; scoped_smoke ai ;;
   verify) do_verify "${2:-}" ;;
   plugin-check)
+    load_settings
     check_assets
     wait_ready
     drawio_custom_live

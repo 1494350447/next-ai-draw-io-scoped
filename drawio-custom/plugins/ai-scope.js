@@ -233,8 +233,9 @@
 
             var GEO_KEYS = ["x", "y", "width", "height"];
 
-            /** 局部编辑 API 根地址。由 PreConfig 注入（见 tools/gen_drawio_custom.py）。 */
-            var SCOPE_ENDPOINT = String(window.AI_SCOPE_ENDPOINT || "http://localhost:3000").replace(/\/+$/, "");
+            /** 局部编辑 API 根地址。由 PreConfig 注入（见 tools/gen_drawio_custom.py）。
+             *  注入值为空时回退到同源：画布经主应用反代到 /drawio，与 /api 同源。 */
+            var SCOPE_ENDPOINT = String(window.AI_SCOPE_ENDPOINT || window.location.origin).replace(/\/+$/, "");
             var PANEL_ID = "aiScopeInstructPanel";
             var NUMBER_LAYER_ID = "aiScopeSelectionNumbers";
             var numberingEnabled = false;
@@ -530,7 +531,7 @@
                     }
                     function onMessage(evt) {
                         var data = evt && evt.data;
-                        if (!data || data.type !== "aiScopeProxyResponse" || data.requestId !== requestId) return;
+                        if (evt.source !== window.parent || !data || data.type !== "aiScopeProxyResponse" || data.requestId !== requestId) return;
                         finish(resolve, { ok: !!data.ok, status: Number(data.status || 502), body: data.body || {} });
                     }
                     window.addEventListener("message", onMessage);
@@ -545,12 +546,8 @@
                     }
                     timer = setTimeout(function () {
                         if (settled) return;
-                        directCallInstruct(xml, roots, instruction, aliases).then(function (value) {
-                            finish(resolve, value);
-                        }).catch(function (error) {
-                            finish(reject, error);
-                        });
-                    }, 5000);
+                        finish(reject, new Error("主应用请求超时，请检查网络或模型服务；未自动重复提交"));
+                    }, 150000);
                 });
             }
 
